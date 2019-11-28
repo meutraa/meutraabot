@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"gitlab.com/meutraa/meutraabot/data"
+	"gitlab.com/meutraa/meutraabot/pkg/data"
 )
 
 type ResponseFunc = func(db *data.Database, text, channel, sender string) (string, bool, error)
