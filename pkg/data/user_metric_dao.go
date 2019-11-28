@@ -8,12 +8,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (d *Database) UsersWithTopWatchTime(channel string) ([]UserMetric, error) {
+func (d *Database) UsersWithTopWatchTime(channel string, limit int) ([]UserMetric, error) {
 	var users []UserMetric
 	if err := d.orm.Where("channel_name = ?", channel).
 		Order("watch_time desc").
 		Order("sender asc").
-		Limit(8).
+		Limit(limit).
 		Find(&users).Error; nil != err {
 		return nil, errors.Wrap(err, "unable to get top users for channel "+channel)
 	}
@@ -28,6 +28,12 @@ func (d *Database) AddWatchTime(channel, sender string) {
 	if nil != err {
 		log.Println("Unable to update watch time for user", sender, "in channel", channel, ":", err)
 	}
+}
+
+func (d *Database) SetEmoji(channelName, user, emoji string) error {
+	return d.orm.Update(&UserMetric{}).
+		Where("channel_name = ? AND sender = ?", channelName, user).
+		Update("emoji", emoji).Error
 }
 
 func (d *Database) GetIntUserMetric(channelName, name, field string) int64 {

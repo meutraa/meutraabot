@@ -17,9 +17,9 @@ func (e RestartError) Error() string {
 const version = "1.2.1"
 
 var metrics = CodeMetrics{
-	Lines:796,
-	Words:2661,
-	Characters:21086,
+	Lines:791,
+	Words:2651,
+	Characters:20948,
 }
 
 func VersionResponse(db *data.Database, channel, sender, text string) (string, bool, error) {

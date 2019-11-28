@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/back"
+	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/emoji"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/greeting"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/management"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/messages"
@@ -51,6 +52,7 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 		watchtime.Response,
 		words.Response,
 		messages.Response,
+		emoji.Response,
 		management.CodeResponse,
 		management.RestartResponse,
 		management.VersionResponse,

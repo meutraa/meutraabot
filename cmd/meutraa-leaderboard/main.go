@@ -44,24 +44,31 @@ type UserStat struct {
 	Poops string
 }
 
-func getUserString(i int, name string) string {
-	if name == "casweets" {
-		return "🦊 <font color=\"ff8ba7\">" + name + "</font>"
-	} else if name == "shannaboo1" {
-		return "👑 <font color=\"ffcccc\">" + name + "</font>"
-	} else if i == 0 {
-		return "🏆 " + name
-	} else if i == 1 {
-		return "🥈 " + name
-	} else if i == 2 {
-		return "🥉 " + name
+func getUserString(i int, user *data.UserMetric) string {
+	str := ""
+	if "" != user.Emoji {
+		str += user.Emoji + " "
+	} else {
+		if i == 0 {
+			str += "🏆 "
+		} else if i == 1 {
+			str += "🥈 "
+		} else if i == 2 {
+			str += "🥉 "
+		}
 	}
-	return " " + name
+
+	if "" != user.TextColor {
+		str += "<font color=\"" + user.TextColor + "\">" + user.Sender + "</font>"
+	} else {
+		str += user.Sender
+	}
+	return str
 }
 
 func handleLeaderboardRequest(c *gin.Context, db *data.Database, t *template.Template) {
 	channel := "#" + c.Param("user")
-	users, err := db.UsersWithTopWatchTime(channel)
+	users, err := db.UsersWithTopWatchTime(channel, 8)
 	if nil != err {
 		log.Println(err.Error())
 		c.String(http.StatusBadRequest, "dummy")
@@ -73,7 +80,7 @@ func handleLeaderboardRequest(c *gin.Context, db *data.Database, t *template.Tem
 	for i, metric := range users {
 		userstats = append(userstats,
 			UserStat{
-				template.HTML(getUserString(i, metric.Sender)),
+				template.HTML(getUserString(i, &metric)),
 				p.Sprintf("%d", metric.WatchTime/60),
 			})
 	}
