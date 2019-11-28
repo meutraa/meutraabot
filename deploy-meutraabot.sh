@@ -9,12 +9,12 @@ chars=$(echo "${code}" | wc -c)
 sed -i -e "s/Lines:[^,]*/Lines:${lines}/" \
         -e "s/Words:[^,]*/Words:${words}/" \
         -e "s/Characters:[^,]*/Characters:${chars}/" \
-        modules/management/management.go
+        cmd/meutraabot/modules/management/management.go
 
 rsync -aP --delete ./ lost:meutraabot/
 ssh lost /usr/bin/env sh << EOF
 cd meutraabot
-go build && \
+go build ./cmd/meutraabot && \
         sudo systemctl stop meutraabot && \
         sudo cp meutraabot /etc/nixos/bin/meutraabot && \
         sudo systemctl start meutraabot && \
