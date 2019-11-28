@@ -2,37 +2,17 @@ package main
 
 import (
 	"bytes"
-	"errors"
-	"github.com/gin-gonic/gin"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
-	"time"
 
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"github.com/gin-gonic/gin"
+
+	"gitlab.com/meutraa/meutraabot/pkg/data"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
-
-type UserMetric struct {
-	Sender       string `gorm:"primary_key"`
-	ChannelName  string `gorm:"primary_key"`
-	WordCount    int64
-	MessageCount int64
-	WatchTime    int64
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-}
-
-func readEnv(key string) string {
-	value := os.Getenv(key)
-	if "" == value {
-		log.Fatalln("Unable to read", key, "from environment")
-	}
-	return value
-}
 
 const templateString = `
 <!DOCTYPE html>
@@ -54,22 +34,10 @@ padding: 16px;
 <td>💩 {{ .Poops }}</td>
 </tr>
 {{end}}
-</table> 
+</table>
 </body>
 </html>
 `
-
-func getLeaderboard(db *gorm.DB, channel string) ([]UserMetric, error) {
-	var users []UserMetric
-	if err := db.Where("channel_name = ?", channel).
-		Order("watch_time desc").
-		Order("sender asc").
-		Limit(8).
-		Find(&users).Error; nil != err {
-		return nil, errors.New("Unable to get top users for channel " + channel + ": " + err.Error())
-	}
-	return users, nil
-}
 
 type UserStat struct {
 	Name  template.HTML
@@ -91,9 +59,9 @@ func getUserString(i int, name string) string {
 	return " " + name
 }
 
-func handleLeaderboardRequest(c *gin.Context, db *gorm.DB, t *template.Template) {
+func handleLeaderboardRequest(c *gin.Context, db *data.Database, t *template.Template) {
 	channel := "#" + c.Param("user")
-	users, err := getLeaderboard(db, channel)
+	users, err := db.UsersWithTopWatchTime(channel)
 	if nil != err {
 		log.Println(err.Error())
 		c.String(http.StatusBadRequest, "dummy")
@@ -128,17 +96,19 @@ func handleLeaderboardRequest(c *gin.Context, db *gorm.DB, t *template.Template)
 }
 
 func main() {
-	connectionString := readEnv("POSTGRES_CONNECTION_STRING")
-	listenAddress := readEnv("LISTEN_ADDRESS")
+	listenAddress := os.Getenv("LISTEN_ADDRESS")
+	if "" == listenAddress {
+		log.Fatalln("Unable to read LISTEN_ADDRESS from env")
+	}
 
 	t, err := template.New("leaderboard").Parse(templateString)
 	if nil != err {
 		log.Fatalln("Unable to parse template string")
 	}
 
-	db, err := gorm.Open("postgres", connectionString)
+	db, err := data.Connection()
 	if nil != err {
-		log.Fatalln("Unable to establish connection to database", err.Error())
+		log.Fatalln("Unable to open db connection:", err)
 	}
 	defer db.Close()
 

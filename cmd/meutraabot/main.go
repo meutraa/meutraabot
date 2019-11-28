@@ -8,7 +8,6 @@ import (
 	"strings"
 	"syscall"
 
-	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/back"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/greeting"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/management"
@@ -17,12 +16,13 @@ import (
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/vulpesmusketeer"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/watchtime"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/words"
-	"gitlab.com/meutraa/meutraabot/pkg/commands"
 	"gitlab.com/meutraa/meutraabot/pkg/data"
 	"gitlab.com/meutraa/meutraabot/pkg/irc"
 )
 
-func runFirst(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, funcs ...commands.ResponseFunc) bool {
+type ResponseFunc = func(db *data.Database, text, channel, sender string) (string, bool, error)
+
+func runFirst(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, funcs ...ResponseFunc) bool {
 	for _, function := range funcs {
 		res, valid, err := function(db, msg.Channel, msg.Sender, msg.Message)
 		if valid {
@@ -117,7 +117,11 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
 	// Set up our irc client
-	cred := commands.ReadEnv("TWITCH_OAUTH_TOKEN")
+	cred := os.Getenv("TWITCH_OAUTH_TOKEN")
+	if "" == cred {
+		cleanup(db, nil, errors.New("Unable to read TWITCH_OAUTH_TOKEN from env"))
+	}
+
 	client, err := irc.NewClient()
 	if nil != err {
 		cleanup(db, client, err)

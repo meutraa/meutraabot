@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
-rm meutraabot
+go build ./cmd/meutraabot || exit
+
+rm meutraabot meutraa-leaderboard meutraa-chat
 
 code=$(find -name "*.go" -exec cat {} \; | sed -r '/^\s*$/d')
 lines=$(echo "${code}" | wc -l)
@@ -11,12 +13,12 @@ sed -i -e "s/Lines:[^,]*/Lines:${lines}/" \
         -e "s/Characters:[^,]*/Characters:${chars}/" \
         cmd/meutraabot/modules/management/management.go
 
-rsync -aP --delete ./ lost:meutraabot/
-ssh lost /usr/bin/env sh << EOF
+rsync -aP -e 'ssh -p 2020' --delete ./ lost.host:meutraabot/
+ssh -p 2020 lost.host /usr/bin/env sh << EOF
 cd meutraabot
 go build ./cmd/meutraabot && \
         sudo systemctl stop meutraabot && \
-        sudo cp meutraabot /etc/nixos/bin/meutraabot && \
+        sudo cp meutraabot /etc/nixos/bin/ && \
         sudo systemctl start meutraabot && \
         sudo journalctl -xefu meutraabot
 EOF
