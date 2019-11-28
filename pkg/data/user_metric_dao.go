@@ -31,7 +31,7 @@ func (d *Database) AddWatchTime(channel, sender string) {
 }
 
 func (d *Database) SetEmoji(channelName, user, emoji string) error {
-	return d.orm.Update(&UserMetric{}).
+	return d.orm.Model(&UserMetric{}).
 		Where("channel_name = ? AND sender = ?", channelName, user).
 		Update("emoji", emoji).Error
 }

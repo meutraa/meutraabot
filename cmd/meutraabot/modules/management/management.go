@@ -14,12 +14,12 @@ func (e RestartError) Error() string {
 	return "Restart requested"
 }
 
-const version = "1.2.1"
+const version = "1.3.0"
 
 var metrics = CodeMetrics{
-	Lines:791,
-	Words:2651,
-	Characters:20948,
+	Lines:840,
+	Words:2835,
+	Characters:22216,
 }
 
 func VersionResponse(db *data.Database, channel, sender, text string) (string, bool, error) {

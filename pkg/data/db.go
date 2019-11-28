@@ -32,6 +32,7 @@ func Connection() (*Database, error) {
 	}
 
 	orm, err := gorm.Open("postgres", connectionString)
+	orm.LogMode(true)
 	if nil != err {
 		return nil, errors.Wrap(err, "unable to establish connection to database")
 	}
