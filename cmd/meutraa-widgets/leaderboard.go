@@ -12,28 +12,32 @@ import (
 	"golang.org/x/text/message"
 )
 
-const templateString = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8" http-equiv="refresh" content="10"></head>
-<style>
-td {
-color: rgb(255, 255, 255);
-font-family: Arial, Helvetica, sans-serif;
-font-size: 7.5vw;
-padding: 16px;
-}
-</style>
-<body>
-<table style="width:100%">
-{{range .Users}}
-<tr>
-<td>{{ .Name }}</td>
-<td>💩 {{ .Poops }}</td>
-</tr>
-{{end}}
-</table>
-</body>
+const templateString = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Leaderboard</title>
+    <meta http-equiv="refresh" content="10">
+    <style>
+      td {
+        color: rgb(255, 255, 255);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 7.5vw;
+        padding: 16px;
+      }
+      table {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <table>{{range .Users}}
+      <tr>
+        <td>{{ .Name }}</td>
+        <td>💩 {{ .Poops }}</td>
+      </tr>{{end}}
+    </table>
+  </body>
 </html>
 `
 

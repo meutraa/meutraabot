@@ -67,7 +67,7 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 	}
 
 	// Save message
-	if err := db.AddMessage(msg.Channel, msg.Sender, msg.Message); nil != err {
+	if err := db.AddMessage(msg.Channel, msg.Sender, msg.OriginalMessage); nil != err {
 		log.Println(msg, err)
 	}
 

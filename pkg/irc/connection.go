@@ -82,9 +82,10 @@ func (client *Client) handleMessage(message []byte, messages chan *PrivateMessag
 			text = strings.TrimSuffix(text, "\n")
 			text = strings.TrimSuffix(text, "\r")
 			messages <- &PrivateMessage{
-				Channel: channel,
-				Sender:  sender,
-				Message: strings.ToLower(text),
+				Channel:         channel,
+				Sender:          sender,
+				Message:         strings.ToLower(text),
+				OriginalMessage: text,
 			}
 		}
 		return

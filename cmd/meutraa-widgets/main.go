@@ -21,6 +21,11 @@ func main() {
 		log.Fatalln("Unable to parse template string")
 	}
 
+	ct, err := template.New("chat").Parse(chatTemplateString)
+	if nil != err {
+		log.Fatalln("Unable to parse template string")
+	}
+
 	db, err := data.Connection()
 	if nil != err {
 		log.Fatalln("Unable to open db connection:", err)
@@ -30,5 +35,6 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.GET("/leaderboard/:user", func(c *gin.Context) { handleLeaderboardRequest(c, db, t) })
+	r.GET("/chat/:user", func(c *gin.Context) { handleChatRequest(c, db, ct) })
 	r.Run(listenAddress)
 }
