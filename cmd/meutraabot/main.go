@@ -66,6 +66,11 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 		log.Println(msg, "unable to update message_count for user:", err)
 	}
 
+	// Save message
+	if err := db.AddMessage(msg.Channel, msg.Sender, text); nil != err {
+		log.Println(msg, err)
+	}
+
 	// Responses that do count towards the message count
 	if runFirst(client, db, msg,
 		sleep.Response,

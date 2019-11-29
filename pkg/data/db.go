@@ -37,7 +37,11 @@ func Connection() (*Database, error) {
 		return nil, errors.Wrap(err, "unable to establish connection to database")
 	}
 
-	orm.AutoMigrate(&Channel{}, &UserMetric{})
+	orm.AutoMigrate(
+		&Channel{},
+		&UserMetric{},
+		&Message{},
+	)
 	return &Database{
 		orm:            orm,
 		activeInterval: activeInterval,

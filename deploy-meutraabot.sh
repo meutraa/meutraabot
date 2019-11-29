@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 go build ./cmd/meutraabot || exit
 
-rm meutraabot meutraa-leaderboard meutraa-chat
+rm meutraabot meutraa-leaderboard
 
 code=$(find -name "*.go" -exec cat {} \; | sed -r '/^\s*$/d')
 lines=$(echo "${code}" | wc -l)

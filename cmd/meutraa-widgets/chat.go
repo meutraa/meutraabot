@@ -5,25 +5,23 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/gin-gonic/gin"
-
 	"gitlab.com/meutraa/meutraabot/pkg/data"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
 
-const templateString = `
+const chatTemplateString = `
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8" http-equiv="refresh" content="10"></head>
+<head><meta charset="UTF-8" http-equiv="refresh" content="5"></head>
 <style>
 td {
 color: rgb(255, 255, 255);
 font-family: Arial, Helvetica, sans-serif;
-font-size: 7.5vw;
-padding: 16px;
+font-size: 4vw;
+padding: 8px;
 }
 </style>
 <body>
@@ -31,7 +29,7 @@ padding: 16px;
 {{range .Users}}
 <tr>
 <td>{{ .Name }}</td>
-<td>💩 {{ .Poops }}</td>
+<td>{{ .Message }}</td>
 </tr>
 {{end}}
 </table>
@@ -39,9 +37,9 @@ padding: 16px;
 </html>
 `
 
-type UserStat struct {
-	Name  template.HTML
-	Poops string
+type ChatMessage struct {
+	Name    template.HTML
+	Message string
 }
 
 func getUserString(i int, user *data.UserMetric) string {
@@ -66,7 +64,7 @@ func getUserString(i int, user *data.UserMetric) string {
 	return str
 }
 
-func handleLeaderboardRequest(c *gin.Context, db *data.Database, t *template.Template) {
+func handleChatRequest(c *gin.Context, db *data.Database, t *template.Template) {
 	channel := "#" + c.Param("user")
 	users, err := db.UsersWithTopWatchTime(channel, 8)
 	if nil != err {
@@ -100,27 +98,4 @@ func handleLeaderboardRequest(c *gin.Context, db *data.Database, t *template.Tem
 
 	c.Header("Content-Type", "text/html")
 	c.String(http.StatusOK, out.String())
-}
-
-func main() {
-	listenAddress := os.Getenv("LISTEN_ADDRESS")
-	if "" == listenAddress {
-		log.Fatalln("Unable to read LISTEN_ADDRESS from env")
-	}
-
-	t, err := template.New("leaderboard").Parse(templateString)
-	if nil != err {
-		log.Fatalln("Unable to parse template string")
-	}
-
-	db, err := data.Connection()
-	if nil != err {
-		log.Fatalln("Unable to open db connection:", err)
-	}
-	defer db.Close()
-
-	r := gin.New()
-	r.Use(gin.Recovery())
-	r.GET("/leaderboard/:user", func(c *gin.Context) { handleLeaderboardRequest(c, db, t) })
-	r.Run(listenAddress)
 }
