@@ -28,15 +28,15 @@ const chatTemplateString = `<!DOCTYPE html>
         padding: 0;
       }
       th {
-	font-weight: normal;
+	    font-weight: normal;
         white-space: nowrap;
         padding: 6px 24px;
         background-color: rgba(0, 0, 0, 0.2);
         border-radius: 1em 0em 0em 1em;
       }
       .msg {
-	vertical-align: middle;
-	min-height: 33px;
+	    vertical-align: middle;
+	    min-height: 33px;
         background-color: rgba(0, 0, 0, 0.2);
         border-radius: 0em 1em 1em 0em;
         padding: 6px 24px;
