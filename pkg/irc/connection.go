@@ -31,11 +31,11 @@ func (client *Client) Close() {
 	client.c.Close()
 }
 
-func (client *Client) Authenticate(oauth string) error {
+func (client *Client) Authenticate(username, oauth string) error {
 	if err := client.c.WriteMessage(websocket.TextMessage, []byte("PASS "+oauth)); nil != err {
 		return errors.Wrap(err, "Unable to send oauth token")
 	}
-	if err := client.c.WriteMessage(websocket.TextMessage, []byte("NICK meutraa")); nil != err {
+	if err := client.c.WriteMessage(websocket.TextMessage, []byte("NICK "+username)); nil != err {
 		return errors.Wrap(err, "Unable to send NICK message")
 	}
 

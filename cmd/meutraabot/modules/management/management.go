@@ -5,27 +5,32 @@ import (
 	"time"
 
 	"gitlab.com/meutraa/meutraabot/pkg/data"
+	"gitlab.com/meutraa/meutraabot/pkg/env"
 )
 
 type RestartError struct {
+}
+
+type PartError struct {
 }
 
 func (e RestartError) Error() string {
 	return "Restart requested"
 }
 
-const version = "1.3.0"
+func (e PartError) Error() string {
+	return "Part channel requested"
+}
+
+const version = "1.3.1"
 
 var metrics = CodeMetrics{
-	Lines:967,
-	Words:3140,
-	Characters:25335,
+	Lines:      1054,
+	Words:      3462,
+	Characters: 28173,
 }
 
 func VersionResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
-	if sender != "meutraa" {
-		return "", false, nil
-	}
 	if text == "!version" {
 		return version, true, nil
 	}
@@ -33,16 +38,31 @@ func VersionResponse(db *data.Database, channel, sender, text string) (string, b
 }
 
 func CodeResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
-	if text == "!code" {
-		return metrics.String(), true, nil
+	if text != "!code" {
+		return "", false, nil
 	}
-	return "", false, nil
+	return metrics.String(), true, nil
+}
+
+func LeaveResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
+	if text != "!leave" || "#"+sender != channel {
+		return "", false, nil
+	}
+
+	if err := db.DeleteChannel(channel); nil != err {
+		return "Unable to leave channel", false, nil
+	}
+
+	return "Bye bye 👋", true, PartError{}
 }
 
 func RestartResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
-	if sender != "meutraa" {
+	var username string
+	var valid = env.Username(&username)
+	if !valid || sender != username {
 		return "", false, nil
 	}
+
 	if text == "!restart" {
 		go func() {
 			time.Sleep(5 * time.Second)

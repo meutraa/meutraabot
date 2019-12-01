@@ -4,6 +4,7 @@ import (
 	"math/rand"
 
 	"gitlab.com/meutraa/meutraabot/pkg/data"
+	"gitlab.com/meutraa/meutraabot/pkg/env"
 )
 
 var greetings = [...]string{
@@ -22,9 +23,12 @@ func random() string {
 }
 
 func Response(db *data.Database, channel, sender, text string) (string, bool, error) {
-	if sender == "meutraa" {
+	var username string
+	var valid = env.Username(&username)
+	if !valid || sender == username {
 		return "", false, nil
 	}
+
 	switch text {
 	case "hey", "hello", "howdy", "hi":
 		fallthrough

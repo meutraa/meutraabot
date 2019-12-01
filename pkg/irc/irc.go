@@ -28,13 +28,26 @@ func (client *Client) Depart() error {
 	return nil
 }
 
+// channel requires # preppended to.
 func (client *Client) JoinChannel(channel string) error {
 	err := client.c.WriteMessage(
 		websocket.TextMessage,
 		[]byte("JOIN "+channel),
 	)
 	if nil != err {
-		return errors.Wrap(err, "Unable to join channel")
+		return errors.Wrap(err, "Unable to join channel: "+channel)
+	}
+	return nil
+}
+
+// channel requires # preppended to.
+func (client *Client) PartChannel(channel string) error {
+	err := client.c.WriteMessage(
+		websocket.TextMessage,
+		[]byte("PART "+channel),
+	)
+	if nil != err {
+		return errors.Wrap(err, "Unable to part channel: "+channel)
 	}
 	return nil
 }

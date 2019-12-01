@@ -18,6 +18,7 @@ import (
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/watchtime"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/words"
 	"gitlab.com/meutraa/meutraabot/pkg/data"
+	"gitlab.com/meutraa/meutraabot/pkg/env"
 	"gitlab.com/meutraa/meutraabot/pkg/irc"
 )
 
@@ -30,8 +31,13 @@ func runFirst(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, fu
 			if "" != res {
 				client.SendMessage(msg.Channel, res)
 			}
-			if nil != err && errors.Is(err, management.RestartError{}) {
-				cleanup(db, client, err)
+			if nil != err {
+				if errors.Is(err, management.RestartError{}) {
+					cleanup(db, client, err)
+				}
+				if errors.Is(err, management.PartError{}) {
+					client.PartChannel(msg.Channel)
+				}
 			}
 			return true
 		}
@@ -57,6 +63,7 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 		management.RestartResponse,
 		management.VersionResponse,
 		vulpesmusketeer.Response,
+		management.LeaveResponse,
 	) {
 		return
 	}
@@ -81,6 +88,7 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 	}
 }
 
+// Function to cleanup database and irc client before closing
 func cleanup(db *data.Database, client *irc.Client, err error) {
 	if nil != err {
 		log.Println(err)
@@ -101,54 +109,59 @@ func cleanup(db *data.Database, client *irc.Client, err error) {
 }
 
 func main() {
-	// Create a connection to our database, and auto migrate it
-	db, err := data.Connection()
+	// Read our username from the environment, end if failure
+	var username, oauth, connectionString string
+	var activeInterval int64
+
+	if !env.OauthToken(&oauth) ||
+		!env.Username(&username) ||
+		!env.ActiveInterval(&activeInterval) ||
+		!env.PostgresConnectionString(&connectionString) {
+		return
+	}
+
+	// Create a connection to our database, end if failure
+	db, err := data.Connection(connectionString, activeInterval)
 	if nil != err {
 		cleanup(db, nil, err)
 	}
 	defer db.Close()
 
-	// Get a count of channels
-	channelCount, err := db.ChannelCount()
-	if nil != err {
-		cleanup(db, nil, err)
-	}
-
-	if 0 == channelCount {
-		if err := db.Populate(); nil != err {
-			cleanup(db, nil, err)
-		}
-	}
-
+	// Create a channel for the OS to notify us of interrupts/signals
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
-	// Set up our irc client
-	cred := os.Getenv("TWITCH_OAUTH_TOKEN")
-	if "" == cred {
-		cleanup(db, nil, errors.New("Unable to read TWITCH_OAUTH_TOKEN from env"))
-	}
-
+	// Create a websocket connection to the IRC server, end if failure
 	client, err := irc.NewClient()
 	if nil != err {
 		cleanup(db, client, err)
 	}
-	if err := client.Authenticate(cred); nil != err {
+
+	// Authenticate with our IRC connection, end if failure
+	if err := client.Authenticate(username, oauth); nil != err {
 		cleanup(db, client, err)
 	}
 
+	// Register a function for handling IRC private messages
 	messages := make(chan *irc.PrivateMessage, 16)
 	done := make(chan bool, 1)
 	go client.SetMessageChannel(messages, done)
 
-	channels, err := db.Channels()
-	if nil != err {
+	// Join our own channel, if this fails, end program
+	if err := client.JoinChannel("#" + username); nil != err {
 		cleanup(db, client, err)
 	}
 
+	// Get a list of all our channel
+	channels, err := db.Channels()
+	if nil != err {
+		log.Println(err)
+	}
+
+	// Try to join all channels in our channel table
 	for _, channel := range channels {
 		if err := client.JoinChannel(channel.ChannelName); nil != err {
-			cleanup(db, client, err)
+			log.Println(err)
 		}
 	}
 
