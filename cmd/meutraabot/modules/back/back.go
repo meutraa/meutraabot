@@ -10,7 +10,7 @@ import (
 func Response(db *data.Database, channel, sender, text string) (string, bool, error) {
 	var username string
 	var valid = env.Username(&username)
-	if !valid || sender != username {
+	if !valid || sender == username {
 		return "", false, nil
 	}
 

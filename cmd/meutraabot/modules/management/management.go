@@ -25,9 +25,9 @@ func (e PartError) Error() string {
 const version = "1.3.1"
 
 var metrics = CodeMetrics{
-	Lines:1063,
-	Words:3492,
-	Characters:28550,
+	Lines:1062,
+	Words:3490,
+	Characters:28552,
 }
 
 func VersionResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
