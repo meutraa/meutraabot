@@ -31,9 +31,15 @@ import (
 type ResponseFunc = func(db *data.Database, text, channel, sender string) (string, bool, error)
 
 func runFirst(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, funcs ...ResponseFunc) bool {
+	log := func(res string) {
+		diff := time.Now().Sub(msg.ReceivedTime)
+		log.Printf("[%v ms] %v:%v:%v < %v\n", diff.Milliseconds(), msg.Channel, msg.Sender, msg.OriginalMessage, res)
+	}
+
 	for _, function := range funcs {
 		res, valid, err := function(db, msg.Channel, msg.Sender, msg.Message)
 		if valid {
+			log(res)
 			if "" != res {
 				client.SendMessage(msg.Channel, res)
 			}
@@ -48,10 +54,19 @@ func runFirst(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, fu
 			return true
 		}
 	}
+	log("")
 	return false
 }
 
 func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessage) {
+	{ // Insert a user if they do not exist
+		user := models.User{
+			ChannelName: msg.Channel,
+			Sender:      msg.Sender,
+		}
+		user.Upsert(db.Context, db.DB, false, nil, boil.Whitelist(), boil.Infer())
+	}
+
 	// Save message
 	message := models.Message{
 		ChannelName: msg.Channel,

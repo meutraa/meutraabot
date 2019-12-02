@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -63,6 +64,7 @@ func (client *Client) SetMessageChannel(messages chan *PrivateMessage, done chan
 }
 
 func (client *Client) handleMessage(message []byte, messages chan *PrivateMessage) {
+	now := time.Now()
 	msg := string(message)
 	log.Println("<", msg)
 
@@ -84,6 +86,7 @@ func (client *Client) handleMessage(message []byte, messages chan *PrivateMessag
 			messages <- &PrivateMessage{
 				Channel:         channel,
 				Sender:          sender,
+				ReceivedTime:    now,
 				Message:         strings.ToLower(text),
 				OriginalMessage: text,
 			}

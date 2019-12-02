@@ -24,9 +24,9 @@ func (e PartError) Error() string {
 	return "Part channel requested"
 }
 
-const version = "1.4.0"
+const version = "1.4.2"
 
-const sloc = 2722
+const sloc = 839
 
 func VersionResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
 	if text == "!version" {
@@ -58,16 +58,13 @@ func LeaveResponse(db *data.Database, channel, sender, text string) (string, boo
 func RestartResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
 	var username string
 	var valid = env.Username(&username)
-	if !valid || sender != username {
+	if !valid || sender != username || text != "!restart" {
 		return "", false, nil
 	}
 
-	if text == "!restart" {
-		go func() {
-			time.Sleep(5 * time.Second)
-			os.Exit(0)
-		}()
-		return "Restarting in 5 seconds", true, RestartError{}
-	}
-	return "", false, nil
+	go func() {
+		time.Sleep(5 * time.Second)
+		os.Exit(0)
+	}()
+	return "Restarting in 5 seconds", true, RestartError{}
 }

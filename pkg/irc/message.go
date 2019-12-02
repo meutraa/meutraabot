@@ -1,12 +1,11 @@
 package irc
 
+import "time"
+
 type PrivateMessage struct {
 	Channel         string
 	Sender          string
 	Message         string
+	ReceivedTime    time.Time
 	OriginalMessage string
-}
-
-func (msg PrivateMessage) String() string {
-	return msg.Sender + " (" + msg.Channel + "):"
 }

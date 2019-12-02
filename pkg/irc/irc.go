@@ -1,15 +1,12 @@
 package irc
 
 import (
-	"log"
-
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 )
 
 func (client *Client) SendMessage(channel, message string) error {
 	msg := []byte("PRIVMSG " + channel + " :" + message)
-	log.Println(">", string(msg))
 	err := client.c.WriteMessage(websocket.TextMessage, msg)
 	if nil != err {
 		return errors.Wrap(err, "Unable to send message:")

@@ -16,7 +16,7 @@ type Database struct {
 
 func Connection(connectionString string, activeInterval int64) (*Database, error) {
 	db, err := sql.Open("postgres", connectionString)
-	// orm.LogMode(true)
+	// boil.DebugMode = true
 	if nil != err {
 		return nil, errors.Wrap(err, "unable to establish connection to database")
 	}
