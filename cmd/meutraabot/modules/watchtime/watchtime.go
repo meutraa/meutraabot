@@ -2,9 +2,12 @@ package watchtime
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
+	. "github.com/volatiletech/sqlboiler/queries/qm"
 	"gitlab.com/meutraa/meutraabot/pkg/data"
+	"gitlab.com/meutraa/meutraabot/pkg/models"
 )
 
 func periodString(user string, seconds int64) string {
@@ -43,5 +46,17 @@ func Response(db *data.Database, channel, sender, text string) (string, bool, er
 	if text != "!watchtime" {
 		return "", false, nil
 	}
-	return periodString(sender, db.GetIntUserMetric(channel, sender, "watch_time")), true, nil
+
+	user, err := models.Users(
+		Where(
+			models.UserColumns.ChannelName+" = ? AND "+models.UserColumns.Sender+" = ?",
+			channel, sender),
+	).One(db.Context, db.DB)
+
+	if nil != err {
+		log.Println("Unable to lookup user for watch_time", err)
+		return "", true, nil
+	}
+
+	return periodString(sender, user.WatchTime), true, nil
 }

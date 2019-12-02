@@ -2,10 +2,13 @@ package vulpesmusketeer
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
+	"github.com/volatiletech/sqlboiler/boil"
 	"gitlab.com/meutraa/meutraabot/pkg/data"
+	"gitlab.com/meutraa/meutraabot/pkg/models"
 )
 
 func isSpecialUser(sender string) bool {
@@ -22,7 +25,18 @@ func Response(db *data.Database, channel, sender, text string) (string, bool, er
 	}
 
 	if text == "h" {
-		db.AddToIntChannel(channel, "hiccup_count", 1)
+		channel, err := models.FindChannel(db.Context, db.DB, channel)
+		if nil != err {
+			log.Println("Unable to find channel", err)
+			return "", true, nil
+		}
+
+		channel.HiccupCount += 1
+
+		err = channel.Update(db.Context, db.DB, boil.Whitelist(models.ChannelColumns.HiccupCount))
+		if nil != err {
+			log.Println("Unable to update hiccup_count", err)
+		}
 		return "", true, nil
 	}
 
@@ -35,14 +49,30 @@ func Response(db *data.Database, channel, sender, text string) (string, bool, er
 				return "Unable to parse count!: " + err.Error(), true, nil
 			}
 
-			db.AddToIntChannel(channel, "hiccup_count", count)
+			channel, err := models.FindChannel(db.Context, db.DB, channel)
+			if nil != err {
+				log.Println("Unable to find channel", err)
+				return "", true, nil
+			}
+
+			channel.HiccupCount += count
+
+			err = channel.Update(db.Context, db.DB, boil.Whitelist(models.ChannelColumns.HiccupCount))
+			if nil != err {
+				log.Println("Unable to update hiccup_count", err)
+			}
+
 			return "", true, nil
 		}
 	}
 
 	if strings.HasPrefix(text, "!hiccups") {
-		count := db.GetIntChannel(channel, "hiccup_count")
-		return fmt.Sprintf("Casweets has hiccuped %v times!", count), true, nil
+		channel, err := models.FindChannel(db.Context, db.DB, channel)
+		if nil != err {
+			log.Println("Unable to find channel", err)
+			return "", true, nil
+		}
+		return fmt.Sprintf("Casweets has hiccuped %v times!", channel.HiccupCount), true, nil
 	}
 	return "", false, nil
 }

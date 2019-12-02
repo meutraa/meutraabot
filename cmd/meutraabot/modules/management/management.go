@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/meutraa/meutraabot/pkg/data"
 	"gitlab.com/meutraa/meutraabot/pkg/env"
+	"gitlab.com/meutraa/meutraabot/pkg/models"
 )
 
 type RestartError struct {
@@ -23,9 +24,9 @@ func (e PartError) Error() string {
 	return "Part channel requested"
 }
 
-const version = "1.3.3"
+const version = "1.4.0"
 
-const sloc = 1025
+const sloc = 2722
 
 func VersionResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
 	if text == "!version" {
@@ -46,7 +47,8 @@ func LeaveResponse(db *data.Database, channel, sender, text string) (string, boo
 		return "", false, nil
 	}
 
-	if err := db.DeleteChannel(channel); nil != err {
+	ch := models.Channel{ChannelName: channel}
+	if err := ch.Delete(db.Context, db.DB); nil != err {
 		return "Unable to leave channel", false, nil
 	}
 

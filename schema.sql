@@ -27,7 +27,7 @@ CREATE TABLE users (
 ALTER TABLE users ADD CONSTRAINT user_pkey PRIMARY KEY (channel_name, sender);
 
 CREATE TABLE messages (
-  id integer NOT NULL,
+  id SERIAL NOT NULL,
   channel_name text NOT NULL,
   sender text NOT NULL,
   created_at timestamp with time zone NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE messages (
 );
 
 ALTER TABLE messages ADD CONSTRAINT message_pkey PRIMARY KEY (id);
-ALTER TABLE messages ADD CONSTRAINT messages_fkey FOREIGN KEY (channel_name, sender) REFERENCES users(channel_name, sender);
+/*ALTER TABLE messages ADD CONSTRAINT messages_fkey FOREIGN KEY (channel_name, sender) REFERENCES users(channel_name, sender);*/
 
 /*-- Join table
 CREATE TABLE user_messages (

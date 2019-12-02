@@ -1,8 +1,6 @@
 package data
 
-import "github.com/pkg/errors"
-
-func (d *Database) Messages(channel string, limit int) ([]Message, error) {
+/*func (d *Database) Messages(channel string, limit int) ([]Message, error) {
 	var messages []Message
 	if err := d.orm.
 		Preload("User").
@@ -30,4 +28,4 @@ func (d *Database) AddMessage(channel, sender, text string) error {
 		return errors.Wrap(err, "unable to save message for user"+sender)
 	}
 	return nil
-}
+}*/

@@ -103,8 +103,8 @@ type messageL struct{}
 
 var (
 	messageAllColumns            = []string{"id", "channel_name", "sender", "created_at", "updated_at", "message"}
-	messageColumnsWithoutDefault = []string{"id", "channel_name", "sender", "created_at", "updated_at", "message"}
-	messageColumnsWithDefault    = []string{}
+	messageColumnsWithoutDefault = []string{"channel_name", "sender", "created_at", "updated_at", "message"}
+	messageColumnsWithDefault    = []string{"id"}
 	messagePrimaryKeyColumns     = []string{"id"}
 )
 

@@ -5,7 +5,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/volatiletech/null"
+	"github.com/volatiletech/sqlboiler/boil"
+	. "github.com/volatiletech/sqlboiler/queries/qm"
 	"gitlab.com/meutraa/meutraabot/pkg/data"
+	"gitlab.com/meutraa/meutraabot/pkg/models"
 )
 
 func Response(db *data.Database, channel, sender, text string) (string, bool, error) {
@@ -25,27 +29,31 @@ func Response(db *data.Database, channel, sender, text string) (string, bool, er
 		return "", true, nil
 	}
 
-	topUsers, err := db.UsersWithTopWatchTime(channel, 3)
+	topUsers, err := models.Users(
+		models.UserWhere.ChannelName.EQ(channel),
+		OrderBy(models.UserColumns.WatchTime+" DESC"),
+		Limit(3),
+	).All(db.Context, db.DB)
 	if nil != err {
 		log.Println("Unable to get top 3 users", err)
 		return "", true, nil
 	}
 
 	// Check user is in top 3
-	isTop := false
-	for _, user := range topUsers {
-		if user.Sender == sender {
-			isTop = true
+	var user *models.User
+	for _, u := range topUsers {
+		if u.Sender == sender {
+			user = u
 			break
 		}
 	}
-	if !isTop {
+	if nil == user {
 		return "Must be in top 3 of leaderboard to use this command", true, nil
 	}
 
-	emoji := string(rune)
-	log.Println("Setting emoji for user,", sender, "to", emoji)
-	err = db.SetEmoji(channel, sender, emoji)
+	user.Emoji = null.String{String: string(rune), Valid: true}
+
+	err = user.Update(db.Context, db.DB, boil.Whitelist(models.UserColumns.Emoji))
 	if nil != err {
 		log.Println("Unable to set Emoji for user", sender, ":", err)
 		return "", true, nil

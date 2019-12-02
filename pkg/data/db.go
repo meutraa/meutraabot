@@ -3,17 +3,15 @@ package data
 import (
 	"context"
 	"database/sql"
-	"log"
 
-	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 )
 
 type Database struct {
-	db             *sql.DB
-	ctx            context.Context
-	activeInterval int64
+	DB             *sql.DB
+	Context        context.Context
+	ActiveInterval int64
 }
 
 func Connection(connectionString string, activeInterval int64) (*Database, error) {
@@ -24,19 +22,20 @@ func Connection(connectionString string, activeInterval int64) (*Database, error
 	}
 
 	return &Database{
-		db:             db,
-		ctx:            context.Background(),
-		activeInterval: activeInterval,
+		DB:             db,
+		Context:        context.Background(),
+		ActiveInterval: activeInterval,
 	}, nil
 }
 
 func (d *Database) Close() error {
-	if nil != d.db {
-		return d.db.Close()
+	if nil != d.DB {
+		return d.DB.Close()
 	}
 	return nil
 }
 
+/*
 func (d *Database) addToInt(model interface{}, query func(*gorm.DB) *gorm.DB, channelName, user, field string, value int64) error {
 	return query(d.orm.Model(model)).
 		Update(field, gorm.Expr(field+" + ?", value)).Error
@@ -54,3 +53,4 @@ func (d *Database) getInt(model interface{}, query func(*gorm.DB) *gorm.DB, chan
 	}
 	return 0
 }
+*/

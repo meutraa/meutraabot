@@ -1,14 +1,6 @@
 package data
 
-import (
-	"log"
-	"strings"
-	"time"
-
-	"github.com/jinzhu/gorm"
-	"github.com/pkg/errors"
-)
-
+/*
 func (d *Database) UsersWithTopWatchTime(channel string, limit int) ([]UserMetric, error) {
 	var users []UserMetric
 	if err := d.orm.Where("channel_name = ?", channel).
@@ -60,3 +52,4 @@ func (d *Database) AddToIntUserMetric(channelName, user, field string, value int
 		return query.Where("channel_name = ? AND sender = ?", channelName, user)
 	}, channelName, user, field, value)
 }
+*/

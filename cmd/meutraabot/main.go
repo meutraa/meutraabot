@@ -7,8 +7,12 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
+	"github.com/volatiletech/sqlboiler/boil"
+	. "github.com/volatiletech/sqlboiler/queries/qm"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/back"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/emoji"
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/greeting"
@@ -49,11 +53,45 @@ func runFirst(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, fu
 
 func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessage) {
 	// Save message
-	if err := db.AddMessage(msg.Channel, msg.Sender, msg.OriginalMessage); nil != err {
+	message := models.Message{
+		ChannelName: msg.Channel,
+		Sender:      msg.Sender,
+		Message:     msg.OriginalMessage,
+	}
+	if err := message.Insert(db.Context, db.DB, boil.Infer()); nil != err {
 		log.Println(msg, err)
 	}
 
-	db.UpdateMetrics(msg.Channel, msg.Sender, msg.Message)
+	// Get the user to update stats
+	user, err := models.Users(
+		Where(
+			models.UserColumns.ChannelName+" = ? AND "+models.UserColumns.Sender+" = ?",
+			msg.Channel, msg.Sender),
+	).One(db.Context, db.DB)
+
+	if nil != err {
+		log.Println("Unable to find user to update metrics", err)
+	} else {
+		// Update user metrics
+		user.MessageCount += 1
+		user.WordCount += int64(len(strings.Split(msg.Message, " ")))
+
+		now := time.Now()
+		if user.UpdatedAt.Valid {
+			diff := now.Sub(user.UpdatedAt.Time)
+			if diff.Seconds() < float64(db.ActiveInterval) {
+				user.WatchTime += int64(diff.Seconds())
+			}
+		}
+
+		if err := user.Update(db.Context, db.DB, boil.Whitelist(
+			models.UserColumns.WatchTime,
+			models.UserColumns.MessageCount,
+			models.UserColumns.WordCount,
+		)); nil != err {
+			log.Println("Unable to update user metrics", err)
+		}
+	}
 
 	// Commands that do not contribute to message count
 	if runFirst(client, db, msg,
@@ -145,7 +183,7 @@ func main() {
 	}
 
 	// Get a list of all our channel
-	channels, err := models.Channels().All(db.ctx, db.db)
+	channels, err := models.Channels().All(db.Context, db.DB)
 	if nil != err {
 		log.Println(err)
 	}
