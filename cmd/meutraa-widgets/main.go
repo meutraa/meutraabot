@@ -1,5 +1,7 @@
 package main
 
+//go:generate sqlboiler --wipe -o pkg/models psql
+
 import (
 	"html/template"
 	"log"
