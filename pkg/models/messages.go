@@ -87,26 +87,23 @@ var MessageWhere = struct {
 
 // MessageRels is where relationship names are stored.
 var MessageRels = struct {
-	ChannelName  string
-	ChannelName  string
-	ChannelName  string
-	ChannelName  string
-	UserMessages string
+	ChannelName string
+	ChannelName string
+	ChannelName string
+	ChannelName string
 }{
-	ChannelName:  "ChannelName",
-	ChannelName:  "ChannelName",
-	ChannelName:  "ChannelName",
-	ChannelName:  "ChannelName",
-	UserMessages: "UserMessages",
+	ChannelName: "ChannelName",
+	ChannelName: "ChannelName",
+	ChannelName: "ChannelName",
+	ChannelName: "ChannelName",
 }
 
 // messageR is where relationships are stored.
 type messageR struct {
-	ChannelName  *User
-	ChannelName  *User
-	ChannelName  *User
-	ChannelName  *User
-	UserMessages UserMessageSlice
+	ChannelName *User
+	ChannelName *User
+	ChannelName *User
+	ChannelName *User
 }
 
 // NewStruct creates a new relationship struct
@@ -267,27 +264,6 @@ func (o *Message) ChannelName(mods ...qm.QueryMod) userQuery {
 
 	query := Users(queryMods...)
 	queries.SetFrom(query.Query, "\"users\"")
-
-	return query
-}
-
-// UserMessages retrieves all the user_message's UserMessages with an executor.
-func (o *Message) UserMessages(mods ...qm.QueryMod) userMessageQuery {
-	var queryMods []qm.QueryMod
-	if len(mods) != 0 {
-		queryMods = append(queryMods, mods...)
-	}
-
-	queryMods = append(queryMods,
-		qm.Where("\"user_messages\".\"message_id\"=?", o.ID),
-	)
-
-	query := UserMessages(queryMods...)
-	queries.SetFrom(query.Query, "\"user_messages\"")
-
-	if len(queries.GetSelect(query.Query)) == 0 {
-		queries.SetSelect(query.Query, []string{"\"user_messages\".*"})
-	}
 
 	return query
 }
@@ -664,94 +640,6 @@ func (messageL) LoadChannelName(ctx context.Context, e boil.ContextExecutor, sin
 	return nil
 }
 
-// LoadUserMessages allows an eager lookup of values, cached into the
-// loaded structs of the objects. This is for a 1-M or N-M relationship.
-func (messageL) LoadUserMessages(ctx context.Context, e boil.ContextExecutor, singular bool, maybeMessage interface{}, mods queries.Applicator) error {
-	var slice []*Message
-	var object *Message
-
-	if singular {
-		object = maybeMessage.(*Message)
-	} else {
-		slice = *maybeMessage.(*[]*Message)
-	}
-
-	args := make([]interface{}, 0, 1)
-	if singular {
-		if object.R == nil {
-			object.R = &messageR{}
-		}
-		args = append(args, object.ID)
-	} else {
-	Outer:
-		for _, obj := range slice {
-			if obj.R == nil {
-				obj.R = &messageR{}
-			}
-
-			for _, a := range args {
-				if a == obj.ID {
-					continue Outer
-				}
-			}
-
-			args = append(args, obj.ID)
-		}
-	}
-
-	if len(args) == 0 {
-		return nil
-	}
-
-	query := NewQuery(qm.From(`user_messages`), qm.WhereIn(`user_messages.message_id in ?`, args...))
-	if mods != nil {
-		mods.Apply(query)
-	}
-
-	results, err := query.QueryContext(ctx, e)
-	if err != nil {
-		return errors.Wrap(err, "failed to eager load user_messages")
-	}
-
-	var resultSlice []*UserMessage
-	if err = queries.Bind(results, &resultSlice); err != nil {
-		return errors.Wrap(err, "failed to bind eager loaded slice user_messages")
-	}
-
-	if err = results.Close(); err != nil {
-		return errors.Wrap(err, "failed to close results in eager load on user_messages")
-	}
-	if err = results.Err(); err != nil {
-		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for user_messages")
-	}
-
-	if singular {
-		object.R.UserMessages = resultSlice
-		for _, foreign := range resultSlice {
-			if foreign.R == nil {
-				foreign.R = &userMessageR{}
-			}
-			foreign.R.Message = object
-		}
-		return nil
-	}
-
-	for _, foreign := range resultSlice {
-		for _, local := range slice {
-			if local.ID == foreign.MessageID {
-				local.R.UserMessages = append(local.R.UserMessages, foreign)
-				if foreign.R == nil {
-					foreign.R = &userMessageR{}
-				}
-				foreign.R.Message = local
-				break
-			}
-		}
-	}
-
-	return nil
-}
-
 // SetChannelName of the message to the related item.
 // Sets o.R.ChannelName to related.
 // Adds o to related.R.ChannelNameMessages.
@@ -937,59 +825,6 @@ func (o *Message) SetChannelName(ctx context.Context, exec boil.ContextExecutor,
 		related.R.ChannelNameMessages = append(related.R.ChannelNameMessages, o)
 	}
 
-	return nil
-}
-
-// AddUserMessages adds the given related objects to the existing relationships
-// of the message, optionally inserting them as new records.
-// Appends related to o.R.UserMessages.
-// Sets related.R.Message appropriately.
-func (o *Message) AddUserMessages(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*UserMessage) error {
-	var err error
-	for _, rel := range related {
-		if insert {
-			rel.MessageID = o.ID
-			if err = rel.Insert(ctx, exec, boil.Infer()); err != nil {
-				return errors.Wrap(err, "failed to insert into foreign table")
-			}
-		} else {
-			updateQuery := fmt.Sprintf(
-				"UPDATE \"user_messages\" SET %s WHERE %s",
-				strmangle.SetParamNames("\"", "\"", 1, []string{"message_id"}),
-				strmangle.WhereClause("\"", "\"", 2, userMessagePrimaryKeyColumns),
-			)
-			values := []interface{}{o.ID, rel.ChannelName, rel.Sender, rel.MessageID}
-
-			if boil.IsDebug(ctx) {
-				writer := boil.DebugWriterFrom(ctx)
-				fmt.Fprintln(writer, updateQuery)
-				fmt.Fprintln(writer, values)
-			}
-			if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
-				return errors.Wrap(err, "failed to update foreign table")
-			}
-
-			rel.MessageID = o.ID
-		}
-	}
-
-	if o.R == nil {
-		o.R = &messageR{
-			UserMessages: related,
-		}
-	} else {
-		o.R.UserMessages = append(o.R.UserMessages, related...)
-	}
-
-	for _, rel := range related {
-		if rel.R == nil {
-			rel.R = &userMessageR{
-				Message: o,
-			}
-		} else {
-			rel.R.Message = o
-		}
-	}
 	return nil
 }
 
