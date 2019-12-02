@@ -38,7 +38,7 @@ CREATE TABLE messages (
 ALTER TABLE messages ADD CONSTRAINT message_pkey PRIMARY KEY (id);
 ALTER TABLE messages ADD CONSTRAINT messages_fkey FOREIGN KEY (channel_name, sender) REFERENCES users(channel_name, sender);
 
--- Join table
+/*-- Join table
 CREATE TABLE user_messages (
   channel_name text NOT NULL,
   sender text NOT NULL,
@@ -48,4 +48,4 @@ CREATE TABLE user_messages (
 -- Composite primary key
 ALTER TABLE user_messages ADD CONSTRAINT user_message_pkey PRIMARY KEY (channel_name, sender, message_id);
 ALTER TABLE user_messages ADD CONSTRAINT user_message_messages_fkey FOREIGN KEY (message_id) REFERENCES messages(id);
-ALTER TABLE user_messages ADD CONSTRAINT user_message_users_fkey FOREIGN KEY (channel_name, sender) REFERENCES users(channel_name, sender);
+ALTER TABLE user_messages ADD CONSTRAINT user_message_users_fkey FOREIGN KEY (channel_name, sender) REFERENCES users(channel_name, sender);*/

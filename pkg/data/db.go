@@ -1,39 +1,38 @@
 package data
 
 import (
+	"context"
+	"database/sql"
 	"log"
 
 	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 )
 
 type Database struct {
-	orm            *gorm.DB
+	db             *sql.DB
+	ctx            context.Context
 	activeInterval int64
 }
 
 func Connection(connectionString string, activeInterval int64) (*Database, error) {
-	orm, err := gorm.Open("postgres", connectionString)
+	db, err := sql.Open("postgres", connectionString)
 	// orm.LogMode(true)
 	if nil != err {
 		return nil, errors.Wrap(err, "unable to establish connection to database")
 	}
 
-	orm.AutoMigrate(
-		&Channel{},
-		&UserMetric{},
-		&Message{},
-	)
 	return &Database{
-		orm:            orm,
+		db:             db,
+		ctx:            context.Background(),
 		activeInterval: activeInterval,
 	}, nil
 }
 
 func (d *Database) Close() error {
-	if nil != d.orm {
-		return d.orm.Close()
+	if nil != d.db {
+		return d.db.Close()
 	}
 	return nil
 }

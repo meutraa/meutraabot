@@ -21,6 +21,7 @@ import (
 	"gitlab.com/meutraa/meutraabot/pkg/data"
 	"gitlab.com/meutraa/meutraabot/pkg/env"
 	"gitlab.com/meutraa/meutraabot/pkg/irc"
+	"gitlab.com/meutraa/meutraabot/pkg/models"
 )
 
 type ResponseFunc = func(db *data.Database, text, channel, sender string) (string, bool, error)
@@ -144,7 +145,7 @@ func main() {
 	}
 
 	// Get a list of all our channel
-	channels, err := db.Channels()
+	channels, err := models.Channels().All(db.ctx, db.db)
 	if nil != err {
 		log.Println(err)
 	}
