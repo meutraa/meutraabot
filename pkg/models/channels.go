@@ -24,49 +24,64 @@ import (
 
 // Channel is an object representing the database table.
 type Channel struct {
-	ID          int         `boil:"id" json:"id" toml:"id" yaml:"id"`
-	CreatedAt   null.Time   `boil:"created_at" json:"created_at,omitempty" toml:"created_at" yaml:"created_at,omitempty"`
-	UpdatedAt   null.Time   `boil:"updated_at" json:"updated_at,omitempty" toml:"updated_at" yaml:"updated_at,omitempty"`
-	DeletedAt   null.Time   `boil:"deleted_at" json:"deleted_at,omitempty" toml:"deleted_at" yaml:"deleted_at,omitempty"`
-	ChannelName null.String `boil:"channel_name" json:"channel_name,omitempty" toml:"channel_name" yaml:"channel_name,omitempty"`
-	HiccupCount null.Int64  `boil:"hiccup_count" json:"hiccup_count,omitempty" toml:"hiccup_count" yaml:"hiccup_count,omitempty"`
+	ChannelName string    `boil:"channel_name" json:"channel_name" toml:"channel_name" yaml:"channel_name"`
+	CreatedAt   time.Time `boil:"created_at" json:"created_at" toml:"created_at" yaml:"created_at"`
+	UpdatedAt   null.Time `boil:"updated_at" json:"updated_at,omitempty" toml:"updated_at" yaml:"updated_at,omitempty"`
+	HiccupCount int64     `boil:"hiccup_count" json:"hiccup_count" toml:"hiccup_count" yaml:"hiccup_count"`
 
 	R *channelR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L channelL  `boil:"-" json:"-" toml:"-" yaml:"-"`
 }
 
 var ChannelColumns = struct {
-	ID          string
+	ChannelName string
 	CreatedAt   string
 	UpdatedAt   string
-	DeletedAt   string
-	ChannelName string
 	HiccupCount string
 }{
-	ID:          "id",
+	ChannelName: "channel_name",
 	CreatedAt:   "created_at",
 	UpdatedAt:   "updated_at",
-	DeletedAt:   "deleted_at",
-	ChannelName: "channel_name",
 	HiccupCount: "hiccup_count",
 }
 
 // Generated where
 
-type whereHelperint struct{ field string }
+type whereHelperstring struct{ field string }
 
-func (w whereHelperint) EQ(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.EQ, x) }
-func (w whereHelperint) NEQ(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.NEQ, x) }
-func (w whereHelperint) LT(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.LT, x) }
-func (w whereHelperint) LTE(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.LTE, x) }
-func (w whereHelperint) GT(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.GT, x) }
-func (w whereHelperint) GTE(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.GTE, x) }
-func (w whereHelperint) IN(slice []int) qm.QueryMod {
+func (w whereHelperstring) EQ(x string) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.EQ, x) }
+func (w whereHelperstring) NEQ(x string) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.NEQ, x) }
+func (w whereHelperstring) LT(x string) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.LT, x) }
+func (w whereHelperstring) LTE(x string) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.LTE, x) }
+func (w whereHelperstring) GT(x string) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.GT, x) }
+func (w whereHelperstring) GTE(x string) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.GTE, x) }
+func (w whereHelperstring) IN(slice []string) qm.QueryMod {
 	values := make([]interface{}, 0, len(slice))
 	for _, value := range slice {
 		values = append(values, value)
 	}
 	return qm.WhereIn(fmt.Sprintf("%s IN ?", w.field), values...)
+}
+
+type whereHelpertime_Time struct{ field string }
+
+func (w whereHelpertime_Time) EQ(x time.Time) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.EQ, x)
+}
+func (w whereHelpertime_Time) NEQ(x time.Time) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.NEQ, x)
+}
+func (w whereHelpertime_Time) LT(x time.Time) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.LT, x)
+}
+func (w whereHelpertime_Time) LTE(x time.Time) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.LTE, x)
+}
+func (w whereHelpertime_Time) GT(x time.Time) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.GT, x)
+}
+func (w whereHelpertime_Time) GTE(x time.Time) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.GTE, x)
 }
 
 type whereHelpernull_Time struct{ field string }
@@ -92,66 +107,32 @@ func (w whereHelpernull_Time) GTE(x null.Time) qm.QueryMod {
 	return qmhelper.Where(w.field, qmhelper.GTE, x)
 }
 
-type whereHelpernull_String struct{ field string }
+type whereHelperint64 struct{ field string }
 
-func (w whereHelpernull_String) EQ(x null.String) qm.QueryMod {
-	return qmhelper.WhereNullEQ(w.field, false, x)
-}
-func (w whereHelpernull_String) NEQ(x null.String) qm.QueryMod {
-	return qmhelper.WhereNullEQ(w.field, true, x)
-}
-func (w whereHelpernull_String) IsNull() qm.QueryMod    { return qmhelper.WhereIsNull(w.field) }
-func (w whereHelpernull_String) IsNotNull() qm.QueryMod { return qmhelper.WhereIsNotNull(w.field) }
-func (w whereHelpernull_String) LT(x null.String) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.LT, x)
-}
-func (w whereHelpernull_String) LTE(x null.String) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.LTE, x)
-}
-func (w whereHelpernull_String) GT(x null.String) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.GT, x)
-}
-func (w whereHelpernull_String) GTE(x null.String) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.GTE, x)
-}
-
-type whereHelpernull_Int64 struct{ field string }
-
-func (w whereHelpernull_Int64) EQ(x null.Int64) qm.QueryMod {
-	return qmhelper.WhereNullEQ(w.field, false, x)
-}
-func (w whereHelpernull_Int64) NEQ(x null.Int64) qm.QueryMod {
-	return qmhelper.WhereNullEQ(w.field, true, x)
-}
-func (w whereHelpernull_Int64) IsNull() qm.QueryMod    { return qmhelper.WhereIsNull(w.field) }
-func (w whereHelpernull_Int64) IsNotNull() qm.QueryMod { return qmhelper.WhereIsNotNull(w.field) }
-func (w whereHelpernull_Int64) LT(x null.Int64) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.LT, x)
-}
-func (w whereHelpernull_Int64) LTE(x null.Int64) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.LTE, x)
-}
-func (w whereHelpernull_Int64) GT(x null.Int64) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.GT, x)
-}
-func (w whereHelpernull_Int64) GTE(x null.Int64) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.GTE, x)
+func (w whereHelperint64) EQ(x int64) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.EQ, x) }
+func (w whereHelperint64) NEQ(x int64) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.NEQ, x) }
+func (w whereHelperint64) LT(x int64) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.LT, x) }
+func (w whereHelperint64) LTE(x int64) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.LTE, x) }
+func (w whereHelperint64) GT(x int64) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.GT, x) }
+func (w whereHelperint64) GTE(x int64) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.GTE, x) }
+func (w whereHelperint64) IN(slice []int64) qm.QueryMod {
+	values := make([]interface{}, 0, len(slice))
+	for _, value := range slice {
+		values = append(values, value)
+	}
+	return qm.WhereIn(fmt.Sprintf("%s IN ?", w.field), values...)
 }
 
 var ChannelWhere = struct {
-	ID          whereHelperint
-	CreatedAt   whereHelpernull_Time
+	ChannelName whereHelperstring
+	CreatedAt   whereHelpertime_Time
 	UpdatedAt   whereHelpernull_Time
-	DeletedAt   whereHelpernull_Time
-	ChannelName whereHelpernull_String
-	HiccupCount whereHelpernull_Int64
+	HiccupCount whereHelperint64
 }{
-	ID:          whereHelperint{field: "\"channels\".\"id\""},
-	CreatedAt:   whereHelpernull_Time{field: "\"channels\".\"created_at\""},
+	ChannelName: whereHelperstring{field: "\"channels\".\"channel_name\""},
+	CreatedAt:   whereHelpertime_Time{field: "\"channels\".\"created_at\""},
 	UpdatedAt:   whereHelpernull_Time{field: "\"channels\".\"updated_at\""},
-	DeletedAt:   whereHelpernull_Time{field: "\"channels\".\"deleted_at\""},
-	ChannelName: whereHelpernull_String{field: "\"channels\".\"channel_name\""},
-	HiccupCount: whereHelpernull_Int64{field: "\"channels\".\"hiccup_count\""},
+	HiccupCount: whereHelperint64{field: "\"channels\".\"hiccup_count\""},
 }
 
 // ChannelRels is where relationship names are stored.
@@ -171,18 +152,16 @@ func (*channelR) NewStruct() *channelR {
 type channelL struct{}
 
 var (
-	channelAllColumns            = []string{"id", "created_at", "updated_at", "deleted_at", "channel_name", "hiccup_count"}
-	channelColumnsWithoutDefault = []string{"created_at", "updated_at", "deleted_at", "channel_name", "hiccup_count"}
-	channelColumnsWithDefault    = []string{"id"}
-	channelPrimaryKeyColumns     = []string{"id"}
+	channelAllColumns            = []string{"channel_name", "created_at", "updated_at", "hiccup_count"}
+	channelColumnsWithoutDefault = []string{"channel_name", "created_at", "updated_at", "hiccup_count"}
+	channelColumnsWithDefault    = []string{}
+	channelPrimaryKeyColumns     = []string{"channel_name"}
 )
 
 type (
 	// ChannelSlice is an alias for a slice of pointers to Channel.
 	// This should generally be used opposed to []Channel.
 	ChannelSlice []*Channel
-	// ChannelHook is the signature for custom Channel hook methods
-	ChannelHook func(context.Context, boil.ContextExecutor, *Channel) error
 
 	channelQuery struct {
 		*queries.Query
@@ -210,176 +189,6 @@ var (
 	_ = qmhelper.Where
 )
 
-var channelBeforeInsertHooks []ChannelHook
-var channelBeforeUpdateHooks []ChannelHook
-var channelBeforeDeleteHooks []ChannelHook
-var channelBeforeUpsertHooks []ChannelHook
-
-var channelAfterInsertHooks []ChannelHook
-var channelAfterSelectHooks []ChannelHook
-var channelAfterUpdateHooks []ChannelHook
-var channelAfterDeleteHooks []ChannelHook
-var channelAfterUpsertHooks []ChannelHook
-
-// doBeforeInsertHooks executes all "before insert" hooks.
-func (o *Channel) doBeforeInsertHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelBeforeInsertHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// doBeforeUpdateHooks executes all "before Update" hooks.
-func (o *Channel) doBeforeUpdateHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelBeforeUpdateHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// doBeforeDeleteHooks executes all "before Delete" hooks.
-func (o *Channel) doBeforeDeleteHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelBeforeDeleteHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// doBeforeUpsertHooks executes all "before Upsert" hooks.
-func (o *Channel) doBeforeUpsertHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelBeforeUpsertHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// doAfterInsertHooks executes all "after Insert" hooks.
-func (o *Channel) doAfterInsertHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelAfterInsertHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// doAfterSelectHooks executes all "after Select" hooks.
-func (o *Channel) doAfterSelectHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelAfterSelectHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// doAfterUpdateHooks executes all "after Update" hooks.
-func (o *Channel) doAfterUpdateHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelAfterUpdateHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// doAfterDeleteHooks executes all "after Delete" hooks.
-func (o *Channel) doAfterDeleteHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelAfterDeleteHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// doAfterUpsertHooks executes all "after Upsert" hooks.
-func (o *Channel) doAfterUpsertHooks(ctx context.Context, exec boil.ContextExecutor) (err error) {
-	if boil.HooksAreSkipped(ctx) {
-		return nil
-	}
-
-	for _, hook := range channelAfterUpsertHooks {
-		if err := hook(ctx, exec, o); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// AddChannelHook registers your hook function for all future operations.
-func AddChannelHook(hookPoint boil.HookPoint, channelHook ChannelHook) {
-	switch hookPoint {
-	case boil.BeforeInsertHook:
-		channelBeforeInsertHooks = append(channelBeforeInsertHooks, channelHook)
-	case boil.BeforeUpdateHook:
-		channelBeforeUpdateHooks = append(channelBeforeUpdateHooks, channelHook)
-	case boil.BeforeDeleteHook:
-		channelBeforeDeleteHooks = append(channelBeforeDeleteHooks, channelHook)
-	case boil.BeforeUpsertHook:
-		channelBeforeUpsertHooks = append(channelBeforeUpsertHooks, channelHook)
-	case boil.AfterInsertHook:
-		channelAfterInsertHooks = append(channelAfterInsertHooks, channelHook)
-	case boil.AfterSelectHook:
-		channelAfterSelectHooks = append(channelAfterSelectHooks, channelHook)
-	case boil.AfterUpdateHook:
-		channelAfterUpdateHooks = append(channelAfterUpdateHooks, channelHook)
-	case boil.AfterDeleteHook:
-		channelAfterDeleteHooks = append(channelAfterDeleteHooks, channelHook)
-	case boil.AfterUpsertHook:
-		channelAfterUpsertHooks = append(channelAfterUpsertHooks, channelHook)
-	}
-}
-
 // One returns a single channel record from the query.
 func (q channelQuery) One(ctx context.Context, exec boil.ContextExecutor) (*Channel, error) {
 	o := &Channel{}
@@ -394,10 +203,6 @@ func (q channelQuery) One(ctx context.Context, exec boil.ContextExecutor) (*Chan
 		return nil, errors.Wrap(err, "models: failed to execute a one query for channels")
 	}
 
-	if err := o.doAfterSelectHooks(ctx, exec); err != nil {
-		return o, err
-	}
-
 	return o, nil
 }
 
@@ -408,14 +213,6 @@ func (q channelQuery) All(ctx context.Context, exec boil.ContextExecutor) (Chann
 	err := q.Bind(ctx, exec, &o)
 	if err != nil {
 		return nil, errors.Wrap(err, "models: failed to assign all query results to Channel slice")
-	}
-
-	if len(channelAfterSelectHooks) != 0 {
-		for _, obj := range o {
-			if err := obj.doAfterSelectHooks(ctx, exec); err != nil {
-				return o, err
-			}
-		}
 	}
 
 	return o, nil
@@ -460,7 +257,7 @@ func Channels(mods ...qm.QueryMod) channelQuery {
 
 // FindChannel retrieves a single record by ID with an executor.
 // If selectCols is empty Find will return all columns.
-func FindChannel(ctx context.Context, exec boil.ContextExecutor, iD int, selectCols ...string) (*Channel, error) {
+func FindChannel(ctx context.Context, exec boil.ContextExecutor, channelName string, selectCols ...string) (*Channel, error) {
 	channelObj := &Channel{}
 
 	sel := "*"
@@ -468,10 +265,10 @@ func FindChannel(ctx context.Context, exec boil.ContextExecutor, iD int, selectC
 		sel = strings.Join(strmangle.IdentQuoteSlice(dialect.LQ, dialect.RQ, selectCols), ",")
 	}
 	query := fmt.Sprintf(
-		"select %s from \"channels\" where \"id\"=$1", sel,
+		"select %s from \"channels\" where \"channel_name\"=$1", sel,
 	)
 
-	q := queries.Raw(query, iD)
+	q := queries.Raw(query, channelName)
 
 	err := q.Bind(ctx, exec, channelObj)
 	if err != nil {
@@ -495,16 +292,12 @@ func (o *Channel) Insert(ctx context.Context, exec boil.ContextExecutor, columns
 	if !boil.TimestampsAreSkipped(ctx) {
 		currTime := time.Now().In(boil.GetLocation())
 
-		if queries.MustTime(o.CreatedAt).IsZero() {
-			queries.SetScanner(&o.CreatedAt, currTime)
+		if o.CreatedAt.IsZero() {
+			o.CreatedAt = currTime
 		}
 		if queries.MustTime(o.UpdatedAt).IsZero() {
 			queries.SetScanner(&o.UpdatedAt, currTime)
 		}
-	}
-
-	if err := o.doBeforeInsertHooks(ctx, exec); err != nil {
-		return err
 	}
 
 	nzDefaults := queries.NonZeroDefaultSet(channelColumnsWithDefault, o)
@@ -570,7 +363,7 @@ func (o *Channel) Insert(ctx context.Context, exec boil.ContextExecutor, columns
 		channelInsertCacheMut.Unlock()
 	}
 
-	return o.doAfterInsertHooks(ctx, exec)
+	return nil
 }
 
 // Update uses an executor to update the Channel.
@@ -584,9 +377,6 @@ func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns
 	}
 
 	var err error
-	if err = o.doBeforeUpdateHooks(ctx, exec); err != nil {
-		return 0, err
-	}
 	key := makeCacheKey(columns, nil)
 	channelUpdateCacheMut.RLock()
 	cache, cached := channelUpdateCache[key]
@@ -639,7 +429,7 @@ func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns
 		channelUpdateCacheMut.Unlock()
 	}
 
-	return rowsAff, o.doAfterUpdateHooks(ctx, exec)
+	return rowsAff, nil
 }
 
 // UpdateAll updates all rows with the specified column values.
@@ -716,14 +506,10 @@ func (o *Channel) Upsert(ctx context.Context, exec boil.ContextExecutor, updateO
 	if !boil.TimestampsAreSkipped(ctx) {
 		currTime := time.Now().In(boil.GetLocation())
 
-		if queries.MustTime(o.CreatedAt).IsZero() {
-			queries.SetScanner(&o.CreatedAt, currTime)
+		if o.CreatedAt.IsZero() {
+			o.CreatedAt = currTime
 		}
 		queries.SetScanner(&o.UpdatedAt, currTime)
-	}
-
-	if err := o.doBeforeUpsertHooks(ctx, exec); err != nil {
-		return err
 	}
 
 	nzDefaults := queries.NonZeroDefaultSet(channelColumnsWithDefault, o)
@@ -827,7 +613,7 @@ func (o *Channel) Upsert(ctx context.Context, exec boil.ContextExecutor, updateO
 		channelUpsertCacheMut.Unlock()
 	}
 
-	return o.doAfterUpsertHooks(ctx, exec)
+	return nil
 }
 
 // Delete deletes a single Channel record with an executor.
@@ -837,12 +623,8 @@ func (o *Channel) Delete(ctx context.Context, exec boil.ContextExecutor) (int64,
 		return 0, errors.New("models: no Channel provided for delete")
 	}
 
-	if err := o.doBeforeDeleteHooks(ctx, exec); err != nil {
-		return 0, err
-	}
-
 	args := queries.ValuesFromMapping(reflect.Indirect(reflect.ValueOf(o)), channelPrimaryKeyMapping)
-	sql := "DELETE FROM \"channels\" WHERE \"id\"=$1"
+	sql := "DELETE FROM \"channels\" WHERE \"channel_name\"=$1"
 
 	if boil.IsDebug(ctx) {
 		writer := boil.DebugWriterFrom(ctx)
@@ -857,10 +639,6 @@ func (o *Channel) Delete(ctx context.Context, exec boil.ContextExecutor) (int64,
 	rowsAff, err := result.RowsAffected()
 	if err != nil {
 		return 0, errors.Wrap(err, "models: failed to get rows affected by delete for channels")
-	}
-
-	if err := o.doAfterDeleteHooks(ctx, exec); err != nil {
-		return 0, err
 	}
 
 	return rowsAff, nil
@@ -893,14 +671,6 @@ func (o ChannelSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 		return 0, nil
 	}
 
-	if len(channelBeforeDeleteHooks) != 0 {
-		for _, obj := range o {
-			if err := obj.doBeforeDeleteHooks(ctx, exec); err != nil {
-				return 0, err
-			}
-		}
-	}
-
 	var args []interface{}
 	for _, obj := range o {
 		pkeyArgs := queries.ValuesFromMapping(reflect.Indirect(reflect.ValueOf(obj)), channelPrimaryKeyMapping)
@@ -925,21 +695,13 @@ func (o ChannelSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 		return 0, errors.Wrap(err, "models: failed to get rows affected by deleteall for channels")
 	}
 
-	if len(channelAfterDeleteHooks) != 0 {
-		for _, obj := range o {
-			if err := obj.doAfterDeleteHooks(ctx, exec); err != nil {
-				return 0, err
-			}
-		}
-	}
-
 	return rowsAff, nil
 }
 
 // Reload refetches the object from the database
 // using the primary keys with an executor.
 func (o *Channel) Reload(ctx context.Context, exec boil.ContextExecutor) error {
-	ret, err := FindChannel(ctx, exec, o.ID)
+	ret, err := FindChannel(ctx, exec, o.ChannelName)
 	if err != nil {
 		return err
 	}
@@ -978,16 +740,16 @@ func (o *ChannelSlice) ReloadAll(ctx context.Context, exec boil.ContextExecutor)
 }
 
 // ChannelExists checks if the Channel row exists.
-func ChannelExists(ctx context.Context, exec boil.ContextExecutor, iD int) (bool, error) {
+func ChannelExists(ctx context.Context, exec boil.ContextExecutor, channelName string) (bool, error) {
 	var exists bool
-	sql := "select exists(select 1 from \"channels\" where \"id\"=$1 limit 1)"
+	sql := "select exists(select 1 from \"channels\" where \"channel_name\"=$1 limit 1)"
 
 	if boil.IsDebug(ctx) {
 		writer := boil.DebugWriterFrom(ctx)
 		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, iD)
+		fmt.Fprintln(writer, channelName)
 	}
-	row := exec.QueryRowContext(ctx, sql, iD)
+	row := exec.QueryRowContext(ctx, sql, channelName)
 
 	err := row.Scan(&exists)
 	if err != nil {
