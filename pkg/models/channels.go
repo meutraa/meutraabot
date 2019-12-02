@@ -369,7 +369,7 @@ func (o *Channel) Insert(ctx context.Context, exec boil.ContextExecutor, columns
 // Update uses an executor to update the Channel.
 // See boil.Columns.UpdateColumnSet documentation to understand column list inference for updates.
 // Update does not automatically update the record in case of default values. Use .Reload() to refresh the records.
-func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns boil.Columns) (int64, error) {
+func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns boil.Columns) error {
 	if !boil.TimestampsAreSkipped(ctx) {
 		currTime := time.Now().In(boil.GetLocation())
 
@@ -392,7 +392,7 @@ func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns
 			wl = strmangle.SetComplement(wl, []string{"created_at"})
 		}
 		if len(wl) == 0 {
-			return 0, errors.New("models: unable to update channels, could not build whitelist")
+			return errors.New("models: unable to update channels, could not build whitelist")
 		}
 
 		cache.query = fmt.Sprintf("UPDATE \"channels\" SET %s WHERE %s",
@@ -401,7 +401,7 @@ func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns
 		)
 		cache.valueMapping, err = queries.BindMapping(channelType, channelMapping, append(wl, channelPrimaryKeyColumns...))
 		if err != nil {
-			return 0, err
+			return err
 		}
 	}
 
@@ -412,15 +412,9 @@ func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns
 		fmt.Fprintln(writer, cache.query)
 		fmt.Fprintln(writer, values)
 	}
-	var result sql.Result
-	result, err = exec.ExecContext(ctx, cache.query, values...)
+	_, err = exec.ExecContext(ctx, cache.query, values...)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to update channels row")
-	}
-
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: failed to get rows affected by update for channels")
+		return errors.Wrap(err, "models: unable to update channels row")
 	}
 
 	if !cached {
@@ -429,35 +423,30 @@ func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns
 		channelUpdateCacheMut.Unlock()
 	}
 
-	return rowsAff, nil
+	return nil
 }
 
 // UpdateAll updates all rows with the specified column values.
-func (q channelQuery) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) (int64, error) {
+func (q channelQuery) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) error {
 	queries.SetUpdate(q.Query, cols)
 
-	result, err := q.Query.ExecContext(ctx, exec)
+	_, err := q.Query.ExecContext(ctx, exec)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to update all for channels")
+		return errors.Wrap(err, "models: unable to update all for channels")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to retrieve rows affected for channels")
-	}
-
-	return rowsAff, nil
+	return nil
 }
 
 // UpdateAll updates all rows with the specified column values, using an executor.
-func (o ChannelSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) (int64, error) {
+func (o ChannelSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) error {
 	ln := int64(len(o))
 	if ln == 0 {
-		return 0, nil
+		return nil
 	}
 
 	if len(cols) == 0 {
-		return 0, errors.New("models: update all requires at least one column argument")
+		return errors.New("models: update all requires at least one column argument")
 	}
 
 	colNames := make([]string, len(cols))
@@ -485,16 +474,12 @@ func (o ChannelSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, 
 		fmt.Fprintln(writer, sql)
 		fmt.Fprintln(writer, args...)
 	}
-	result, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.ExecContext(ctx, sql, args...)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to update all in channel slice")
+		return errors.Wrap(err, "models: unable to update all in channel slice")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to retrieve rows affected all in update all channel")
-	}
-	return rowsAff, nil
+	return nil
 }
 
 // Upsert attempts an insert using an executor, and does an update or ignore on conflict.
@@ -618,9 +603,9 @@ func (o *Channel) Upsert(ctx context.Context, exec boil.ContextExecutor, updateO
 
 // Delete deletes a single Channel record with an executor.
 // Delete will match against the primary key column to find the record to delete.
-func (o *Channel) Delete(ctx context.Context, exec boil.ContextExecutor) (int64, error) {
+func (o *Channel) Delete(ctx context.Context, exec boil.ContextExecutor) error {
 	if o == nil {
-		return 0, errors.New("models: no Channel provided for delete")
+		return errors.New("models: no Channel provided for delete")
 	}
 
 	args := queries.ValuesFromMapping(reflect.Indirect(reflect.ValueOf(o)), channelPrimaryKeyMapping)
@@ -631,44 +616,34 @@ func (o *Channel) Delete(ctx context.Context, exec boil.ContextExecutor) (int64,
 		fmt.Fprintln(writer, sql)
 		fmt.Fprintln(writer, args...)
 	}
-	result, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.ExecContext(ctx, sql, args...)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to delete from channels")
+		return errors.Wrap(err, "models: unable to delete from channels")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: failed to get rows affected by delete for channels")
-	}
-
-	return rowsAff, nil
+	return nil
 }
 
 // DeleteAll deletes all matching rows.
-func (q channelQuery) DeleteAll(ctx context.Context, exec boil.ContextExecutor) (int64, error) {
+func (q channelQuery) DeleteAll(ctx context.Context, exec boil.ContextExecutor) error {
 	if q.Query == nil {
-		return 0, errors.New("models: no channelQuery provided for delete all")
+		return errors.New("models: no channelQuery provided for delete all")
 	}
 
 	queries.SetDelete(q.Query)
 
-	result, err := q.Query.ExecContext(ctx, exec)
+	_, err := q.Query.ExecContext(ctx, exec)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to delete all from channels")
+		return errors.Wrap(err, "models: unable to delete all from channels")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: failed to get rows affected by deleteall for channels")
-	}
-
-	return rowsAff, nil
+	return nil
 }
 
 // DeleteAll deletes all rows in the slice, using an executor.
-func (o ChannelSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) (int64, error) {
+func (o ChannelSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) error {
 	if len(o) == 0 {
-		return 0, nil
+		return nil
 	}
 
 	var args []interface{}
@@ -685,17 +660,12 @@ func (o ChannelSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 		fmt.Fprintln(writer, sql)
 		fmt.Fprintln(writer, args)
 	}
-	result, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.ExecContext(ctx, sql, args...)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to delete all from channel slice")
+		return errors.Wrap(err, "models: unable to delete all from channel slice")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: failed to get rows affected by deleteall for channels")
-	}
-
-	return rowsAff, nil
+	return nil
 }
 
 // Reload refetches the object from the database

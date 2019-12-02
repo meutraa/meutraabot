@@ -109,23 +109,10 @@ var UserWhere = struct {
 
 // UserRels is where relationship names are stored.
 var UserRels = struct {
-	ChannelNameMessages string
-	ChannelNameMessages string
-	ChannelNameMessages string
-	ChannelNameMessages string
-}{
-	ChannelNameMessages: "ChannelNameMessages",
-	ChannelNameMessages: "ChannelNameMessages",
-	ChannelNameMessages: "ChannelNameMessages",
-	ChannelNameMessages: "ChannelNameMessages",
-}
+}{}
 
 // userR is where relationships are stored.
 type userR struct {
-	ChannelNameMessages MessageSlice
-	ChannelNameMessages MessageSlice
-	ChannelNameMessages MessageSlice
-	ChannelNameMessages MessageSlice
 }
 
 // NewStruct creates a new relationship struct
@@ -232,654 +219,6 @@ func (q userQuery) Exists(ctx context.Context, exec boil.ContextExecutor) (bool,
 	}
 
 	return count > 0, nil
-}
-
-// ChannelNameMessages retrieves all the message's Messages with an executor via channel_name column.
-func (o *User) ChannelNameMessages(mods ...qm.QueryMod) messageQuery {
-	var queryMods []qm.QueryMod
-	if len(mods) != 0 {
-		queryMods = append(queryMods, mods...)
-	}
-
-	queryMods = append(queryMods,
-		qm.Where("\"messages\".\"channel_name\"=?", o.ChannelName),
-	)
-
-	query := Messages(queryMods...)
-	queries.SetFrom(query.Query, "\"messages\"")
-
-	if len(queries.GetSelect(query.Query)) == 0 {
-		queries.SetSelect(query.Query, []string{"\"messages\".*"})
-	}
-
-	return query
-}
-
-// ChannelNameMessages retrieves all the message's Messages with an executor via channel_name column.
-func (o *User) ChannelNameMessages(mods ...qm.QueryMod) messageQuery {
-	var queryMods []qm.QueryMod
-	if len(mods) != 0 {
-		queryMods = append(queryMods, mods...)
-	}
-
-	queryMods = append(queryMods,
-		qm.Where("\"messages\".\"channel_name\"=?", o.Sender),
-	)
-
-	query := Messages(queryMods...)
-	queries.SetFrom(query.Query, "\"messages\"")
-
-	if len(queries.GetSelect(query.Query)) == 0 {
-		queries.SetSelect(query.Query, []string{"\"messages\".*"})
-	}
-
-	return query
-}
-
-// ChannelNameMessages retrieves all the message's Messages with an executor via sender column.
-func (o *User) ChannelNameMessages(mods ...qm.QueryMod) messageQuery {
-	var queryMods []qm.QueryMod
-	if len(mods) != 0 {
-		queryMods = append(queryMods, mods...)
-	}
-
-	queryMods = append(queryMods,
-		qm.Where("\"messages\".\"sender\"=?", o.ChannelName),
-	)
-
-	query := Messages(queryMods...)
-	queries.SetFrom(query.Query, "\"messages\"")
-
-	if len(queries.GetSelect(query.Query)) == 0 {
-		queries.SetSelect(query.Query, []string{"\"messages\".*"})
-	}
-
-	return query
-}
-
-// ChannelNameMessages retrieves all the message's Messages with an executor via sender column.
-func (o *User) ChannelNameMessages(mods ...qm.QueryMod) messageQuery {
-	var queryMods []qm.QueryMod
-	if len(mods) != 0 {
-		queryMods = append(queryMods, mods...)
-	}
-
-	queryMods = append(queryMods,
-		qm.Where("\"messages\".\"sender\"=?", o.Sender),
-	)
-
-	query := Messages(queryMods...)
-	queries.SetFrom(query.Query, "\"messages\"")
-
-	if len(queries.GetSelect(query.Query)) == 0 {
-		queries.SetSelect(query.Query, []string{"\"messages\".*"})
-	}
-
-	return query
-}
-
-// LoadChannelNameMessages allows an eager lookup of values, cached into the
-// loaded structs of the objects. This is for a 1-M or N-M relationship.
-func (userL) LoadChannelNameMessages(ctx context.Context, e boil.ContextExecutor, singular bool, maybeUser interface{}, mods queries.Applicator) error {
-	var slice []*User
-	var object *User
-
-	if singular {
-		object = maybeUser.(*User)
-	} else {
-		slice = *maybeUser.(*[]*User)
-	}
-
-	args := make([]interface{}, 0, 1)
-	if singular {
-		if object.R == nil {
-			object.R = &userR{}
-		}
-		args = append(args, object.ChannelName)
-	} else {
-	Outer:
-		for _, obj := range slice {
-			if obj.R == nil {
-				obj.R = &userR{}
-			}
-
-			for _, a := range args {
-				if a == obj.ChannelName {
-					continue Outer
-				}
-			}
-
-			args = append(args, obj.ChannelName)
-		}
-	}
-
-	if len(args) == 0 {
-		return nil
-	}
-
-	query := NewQuery(qm.From(`messages`), qm.WhereIn(`messages.channel_name in ?`, args...))
-	if mods != nil {
-		mods.Apply(query)
-	}
-
-	results, err := query.QueryContext(ctx, e)
-	if err != nil {
-		return errors.Wrap(err, "failed to eager load messages")
-	}
-
-	var resultSlice []*Message
-	if err = queries.Bind(results, &resultSlice); err != nil {
-		return errors.Wrap(err, "failed to bind eager loaded slice messages")
-	}
-
-	if err = results.Close(); err != nil {
-		return errors.Wrap(err, "failed to close results in eager load on messages")
-	}
-	if err = results.Err(); err != nil {
-		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for messages")
-	}
-
-	if singular {
-		object.R.ChannelNameMessages = resultSlice
-		for _, foreign := range resultSlice {
-			if foreign.R == nil {
-				foreign.R = &messageR{}
-			}
-			foreign.R.ChannelName = object
-		}
-		return nil
-	}
-
-	for _, foreign := range resultSlice {
-		for _, local := range slice {
-			if local.ChannelName == foreign.ChannelName {
-				local.R.ChannelNameMessages = append(local.R.ChannelNameMessages, foreign)
-				if foreign.R == nil {
-					foreign.R = &messageR{}
-				}
-				foreign.R.ChannelName = local
-				break
-			}
-		}
-	}
-
-	return nil
-}
-
-// LoadChannelNameMessages allows an eager lookup of values, cached into the
-// loaded structs of the objects. This is for a 1-M or N-M relationship.
-func (userL) LoadChannelNameMessages(ctx context.Context, e boil.ContextExecutor, singular bool, maybeUser interface{}, mods queries.Applicator) error {
-	var slice []*User
-	var object *User
-
-	if singular {
-		object = maybeUser.(*User)
-	} else {
-		slice = *maybeUser.(*[]*User)
-	}
-
-	args := make([]interface{}, 0, 1)
-	if singular {
-		if object.R == nil {
-			object.R = &userR{}
-		}
-		args = append(args, object.Sender)
-	} else {
-	Outer:
-		for _, obj := range slice {
-			if obj.R == nil {
-				obj.R = &userR{}
-			}
-
-			for _, a := range args {
-				if a == obj.Sender {
-					continue Outer
-				}
-			}
-
-			args = append(args, obj.Sender)
-		}
-	}
-
-	if len(args) == 0 {
-		return nil
-	}
-
-	query := NewQuery(qm.From(`messages`), qm.WhereIn(`messages.channel_name in ?`, args...))
-	if mods != nil {
-		mods.Apply(query)
-	}
-
-	results, err := query.QueryContext(ctx, e)
-	if err != nil {
-		return errors.Wrap(err, "failed to eager load messages")
-	}
-
-	var resultSlice []*Message
-	if err = queries.Bind(results, &resultSlice); err != nil {
-		return errors.Wrap(err, "failed to bind eager loaded slice messages")
-	}
-
-	if err = results.Close(); err != nil {
-		return errors.Wrap(err, "failed to close results in eager load on messages")
-	}
-	if err = results.Err(); err != nil {
-		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for messages")
-	}
-
-	if singular {
-		object.R.ChannelNameMessages = resultSlice
-		for _, foreign := range resultSlice {
-			if foreign.R == nil {
-				foreign.R = &messageR{}
-			}
-			foreign.R.ChannelName = object
-		}
-		return nil
-	}
-
-	for _, foreign := range resultSlice {
-		for _, local := range slice {
-			if local.Sender == foreign.ChannelName {
-				local.R.ChannelNameMessages = append(local.R.ChannelNameMessages, foreign)
-				if foreign.R == nil {
-					foreign.R = &messageR{}
-				}
-				foreign.R.ChannelName = local
-				break
-			}
-		}
-	}
-
-	return nil
-}
-
-// LoadChannelNameMessages allows an eager lookup of values, cached into the
-// loaded structs of the objects. This is for a 1-M or N-M relationship.
-func (userL) LoadChannelNameMessages(ctx context.Context, e boil.ContextExecutor, singular bool, maybeUser interface{}, mods queries.Applicator) error {
-	var slice []*User
-	var object *User
-
-	if singular {
-		object = maybeUser.(*User)
-	} else {
-		slice = *maybeUser.(*[]*User)
-	}
-
-	args := make([]interface{}, 0, 1)
-	if singular {
-		if object.R == nil {
-			object.R = &userR{}
-		}
-		args = append(args, object.ChannelName)
-	} else {
-	Outer:
-		for _, obj := range slice {
-			if obj.R == nil {
-				obj.R = &userR{}
-			}
-
-			for _, a := range args {
-				if a == obj.ChannelName {
-					continue Outer
-				}
-			}
-
-			args = append(args, obj.ChannelName)
-		}
-	}
-
-	if len(args) == 0 {
-		return nil
-	}
-
-	query := NewQuery(qm.From(`messages`), qm.WhereIn(`messages.sender in ?`, args...))
-	if mods != nil {
-		mods.Apply(query)
-	}
-
-	results, err := query.QueryContext(ctx, e)
-	if err != nil {
-		return errors.Wrap(err, "failed to eager load messages")
-	}
-
-	var resultSlice []*Message
-	if err = queries.Bind(results, &resultSlice); err != nil {
-		return errors.Wrap(err, "failed to bind eager loaded slice messages")
-	}
-
-	if err = results.Close(); err != nil {
-		return errors.Wrap(err, "failed to close results in eager load on messages")
-	}
-	if err = results.Err(); err != nil {
-		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for messages")
-	}
-
-	if singular {
-		object.R.ChannelNameMessages = resultSlice
-		for _, foreign := range resultSlice {
-			if foreign.R == nil {
-				foreign.R = &messageR{}
-			}
-			foreign.R.ChannelName = object
-		}
-		return nil
-	}
-
-	for _, foreign := range resultSlice {
-		for _, local := range slice {
-			if local.ChannelName == foreign.Sender {
-				local.R.ChannelNameMessages = append(local.R.ChannelNameMessages, foreign)
-				if foreign.R == nil {
-					foreign.R = &messageR{}
-				}
-				foreign.R.ChannelName = local
-				break
-			}
-		}
-	}
-
-	return nil
-}
-
-// LoadChannelNameMessages allows an eager lookup of values, cached into the
-// loaded structs of the objects. This is for a 1-M or N-M relationship.
-func (userL) LoadChannelNameMessages(ctx context.Context, e boil.ContextExecutor, singular bool, maybeUser interface{}, mods queries.Applicator) error {
-	var slice []*User
-	var object *User
-
-	if singular {
-		object = maybeUser.(*User)
-	} else {
-		slice = *maybeUser.(*[]*User)
-	}
-
-	args := make([]interface{}, 0, 1)
-	if singular {
-		if object.R == nil {
-			object.R = &userR{}
-		}
-		args = append(args, object.Sender)
-	} else {
-	Outer:
-		for _, obj := range slice {
-			if obj.R == nil {
-				obj.R = &userR{}
-			}
-
-			for _, a := range args {
-				if a == obj.Sender {
-					continue Outer
-				}
-			}
-
-			args = append(args, obj.Sender)
-		}
-	}
-
-	if len(args) == 0 {
-		return nil
-	}
-
-	query := NewQuery(qm.From(`messages`), qm.WhereIn(`messages.sender in ?`, args...))
-	if mods != nil {
-		mods.Apply(query)
-	}
-
-	results, err := query.QueryContext(ctx, e)
-	if err != nil {
-		return errors.Wrap(err, "failed to eager load messages")
-	}
-
-	var resultSlice []*Message
-	if err = queries.Bind(results, &resultSlice); err != nil {
-		return errors.Wrap(err, "failed to bind eager loaded slice messages")
-	}
-
-	if err = results.Close(); err != nil {
-		return errors.Wrap(err, "failed to close results in eager load on messages")
-	}
-	if err = results.Err(); err != nil {
-		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for messages")
-	}
-
-	if singular {
-		object.R.ChannelNameMessages = resultSlice
-		for _, foreign := range resultSlice {
-			if foreign.R == nil {
-				foreign.R = &messageR{}
-			}
-			foreign.R.ChannelName = object
-		}
-		return nil
-	}
-
-	for _, foreign := range resultSlice {
-		for _, local := range slice {
-			if local.Sender == foreign.Sender {
-				local.R.ChannelNameMessages = append(local.R.ChannelNameMessages, foreign)
-				if foreign.R == nil {
-					foreign.R = &messageR{}
-				}
-				foreign.R.ChannelName = local
-				break
-			}
-		}
-	}
-
-	return nil
-}
-
-// AddChannelNameMessages adds the given related objects to the existing relationships
-// of the user, optionally inserting them as new records.
-// Appends related to o.R.ChannelNameMessages.
-// Sets related.R.ChannelName appropriately.
-func (o *User) AddChannelNameMessages(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*Message) error {
-	var err error
-	for _, rel := range related {
-		if insert {
-			rel.ChannelName = o.ChannelName
-			if err = rel.Insert(ctx, exec, boil.Infer()); err != nil {
-				return errors.Wrap(err, "failed to insert into foreign table")
-			}
-		} else {
-			updateQuery := fmt.Sprintf(
-				"UPDATE \"messages\" SET %s WHERE %s",
-				strmangle.SetParamNames("\"", "\"", 1, []string{"channel_name"}),
-				strmangle.WhereClause("\"", "\"", 2, messagePrimaryKeyColumns),
-			)
-			values := []interface{}{o.ChannelName, rel.ID}
-
-			if boil.IsDebug(ctx) {
-				writer := boil.DebugWriterFrom(ctx)
-				fmt.Fprintln(writer, updateQuery)
-				fmt.Fprintln(writer, values)
-			}
-			if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
-				return errors.Wrap(err, "failed to update foreign table")
-			}
-
-			rel.ChannelName = o.ChannelName
-		}
-	}
-
-	if o.R == nil {
-		o.R = &userR{
-			ChannelNameMessages: related,
-		}
-	} else {
-		o.R.ChannelNameMessages = append(o.R.ChannelNameMessages, related...)
-	}
-
-	for _, rel := range related {
-		if rel.R == nil {
-			rel.R = &messageR{
-				ChannelName: o,
-			}
-		} else {
-			rel.R.ChannelName = o
-		}
-	}
-	return nil
-}
-
-// AddChannelNameMessages adds the given related objects to the existing relationships
-// of the user, optionally inserting them as new records.
-// Appends related to o.R.ChannelNameMessages.
-// Sets related.R.ChannelName appropriately.
-func (o *User) AddChannelNameMessages(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*Message) error {
-	var err error
-	for _, rel := range related {
-		if insert {
-			rel.ChannelName = o.Sender
-			if err = rel.Insert(ctx, exec, boil.Infer()); err != nil {
-				return errors.Wrap(err, "failed to insert into foreign table")
-			}
-		} else {
-			updateQuery := fmt.Sprintf(
-				"UPDATE \"messages\" SET %s WHERE %s",
-				strmangle.SetParamNames("\"", "\"", 1, []string{"channel_name"}),
-				strmangle.WhereClause("\"", "\"", 2, messagePrimaryKeyColumns),
-			)
-			values := []interface{}{o.Sender, rel.ID}
-
-			if boil.IsDebug(ctx) {
-				writer := boil.DebugWriterFrom(ctx)
-				fmt.Fprintln(writer, updateQuery)
-				fmt.Fprintln(writer, values)
-			}
-			if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
-				return errors.Wrap(err, "failed to update foreign table")
-			}
-
-			rel.ChannelName = o.Sender
-		}
-	}
-
-	if o.R == nil {
-		o.R = &userR{
-			ChannelNameMessages: related,
-		}
-	} else {
-		o.R.ChannelNameMessages = append(o.R.ChannelNameMessages, related...)
-	}
-
-	for _, rel := range related {
-		if rel.R == nil {
-			rel.R = &messageR{
-				ChannelName: o,
-			}
-		} else {
-			rel.R.ChannelName = o
-		}
-	}
-	return nil
-}
-
-// AddChannelNameMessages adds the given related objects to the existing relationships
-// of the user, optionally inserting them as new records.
-// Appends related to o.R.ChannelNameMessages.
-// Sets related.R.ChannelName appropriately.
-func (o *User) AddChannelNameMessages(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*Message) error {
-	var err error
-	for _, rel := range related {
-		if insert {
-			rel.Sender = o.ChannelName
-			if err = rel.Insert(ctx, exec, boil.Infer()); err != nil {
-				return errors.Wrap(err, "failed to insert into foreign table")
-			}
-		} else {
-			updateQuery := fmt.Sprintf(
-				"UPDATE \"messages\" SET %s WHERE %s",
-				strmangle.SetParamNames("\"", "\"", 1, []string{"sender"}),
-				strmangle.WhereClause("\"", "\"", 2, messagePrimaryKeyColumns),
-			)
-			values := []interface{}{o.ChannelName, rel.ID}
-
-			if boil.IsDebug(ctx) {
-				writer := boil.DebugWriterFrom(ctx)
-				fmt.Fprintln(writer, updateQuery)
-				fmt.Fprintln(writer, values)
-			}
-			if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
-				return errors.Wrap(err, "failed to update foreign table")
-			}
-
-			rel.Sender = o.ChannelName
-		}
-	}
-
-	if o.R == nil {
-		o.R = &userR{
-			ChannelNameMessages: related,
-		}
-	} else {
-		o.R.ChannelNameMessages = append(o.R.ChannelNameMessages, related...)
-	}
-
-	for _, rel := range related {
-		if rel.R == nil {
-			rel.R = &messageR{
-				ChannelName: o,
-			}
-		} else {
-			rel.R.ChannelName = o
-		}
-	}
-	return nil
-}
-
-// AddChannelNameMessages adds the given related objects to the existing relationships
-// of the user, optionally inserting them as new records.
-// Appends related to o.R.ChannelNameMessages.
-// Sets related.R.ChannelName appropriately.
-func (o *User) AddChannelNameMessages(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*Message) error {
-	var err error
-	for _, rel := range related {
-		if insert {
-			rel.Sender = o.Sender
-			if err = rel.Insert(ctx, exec, boil.Infer()); err != nil {
-				return errors.Wrap(err, "failed to insert into foreign table")
-			}
-		} else {
-			updateQuery := fmt.Sprintf(
-				"UPDATE \"messages\" SET %s WHERE %s",
-				strmangle.SetParamNames("\"", "\"", 1, []string{"sender"}),
-				strmangle.WhereClause("\"", "\"", 2, messagePrimaryKeyColumns),
-			)
-			values := []interface{}{o.Sender, rel.ID}
-
-			if boil.IsDebug(ctx) {
-				writer := boil.DebugWriterFrom(ctx)
-				fmt.Fprintln(writer, updateQuery)
-				fmt.Fprintln(writer, values)
-			}
-			if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
-				return errors.Wrap(err, "failed to update foreign table")
-			}
-
-			rel.Sender = o.Sender
-		}
-	}
-
-	if o.R == nil {
-		o.R = &userR{
-			ChannelNameMessages: related,
-		}
-	} else {
-		o.R.ChannelNameMessages = append(o.R.ChannelNameMessages, related...)
-	}
-
-	for _, rel := range related {
-		if rel.R == nil {
-			rel.R = &messageR{
-				ChannelName: o,
-			}
-		} else {
-			rel.R.ChannelName = o
-		}
-	}
-	return nil
 }
 
 // Users retrieves all the records using an executor.
@@ -1002,7 +341,7 @@ func (o *User) Insert(ctx context.Context, exec boil.ContextExecutor, columns bo
 // Update uses an executor to update the User.
 // See boil.Columns.UpdateColumnSet documentation to understand column list inference for updates.
 // Update does not automatically update the record in case of default values. Use .Reload() to refresh the records.
-func (o *User) Update(ctx context.Context, exec boil.ContextExecutor, columns boil.Columns) (int64, error) {
+func (o *User) Update(ctx context.Context, exec boil.ContextExecutor, columns boil.Columns) error {
 	if !boil.TimestampsAreSkipped(ctx) {
 		currTime := time.Now().In(boil.GetLocation())
 
@@ -1025,7 +364,7 @@ func (o *User) Update(ctx context.Context, exec boil.ContextExecutor, columns bo
 			wl = strmangle.SetComplement(wl, []string{"created_at"})
 		}
 		if len(wl) == 0 {
-			return 0, errors.New("models: unable to update users, could not build whitelist")
+			return errors.New("models: unable to update users, could not build whitelist")
 		}
 
 		cache.query = fmt.Sprintf("UPDATE \"users\" SET %s WHERE %s",
@@ -1034,7 +373,7 @@ func (o *User) Update(ctx context.Context, exec boil.ContextExecutor, columns bo
 		)
 		cache.valueMapping, err = queries.BindMapping(userType, userMapping, append(wl, userPrimaryKeyColumns...))
 		if err != nil {
-			return 0, err
+			return err
 		}
 	}
 
@@ -1045,15 +384,9 @@ func (o *User) Update(ctx context.Context, exec boil.ContextExecutor, columns bo
 		fmt.Fprintln(writer, cache.query)
 		fmt.Fprintln(writer, values)
 	}
-	var result sql.Result
-	result, err = exec.ExecContext(ctx, cache.query, values...)
+	_, err = exec.ExecContext(ctx, cache.query, values...)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to update users row")
-	}
-
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: failed to get rows affected by update for users")
+		return errors.Wrap(err, "models: unable to update users row")
 	}
 
 	if !cached {
@@ -1062,35 +395,30 @@ func (o *User) Update(ctx context.Context, exec boil.ContextExecutor, columns bo
 		userUpdateCacheMut.Unlock()
 	}
 
-	return rowsAff, nil
+	return nil
 }
 
 // UpdateAll updates all rows with the specified column values.
-func (q userQuery) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) (int64, error) {
+func (q userQuery) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) error {
 	queries.SetUpdate(q.Query, cols)
 
-	result, err := q.Query.ExecContext(ctx, exec)
+	_, err := q.Query.ExecContext(ctx, exec)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to update all for users")
+		return errors.Wrap(err, "models: unable to update all for users")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to retrieve rows affected for users")
-	}
-
-	return rowsAff, nil
+	return nil
 }
 
 // UpdateAll updates all rows with the specified column values, using an executor.
-func (o UserSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) (int64, error) {
+func (o UserSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) error {
 	ln := int64(len(o))
 	if ln == 0 {
-		return 0, nil
+		return nil
 	}
 
 	if len(cols) == 0 {
-		return 0, errors.New("models: update all requires at least one column argument")
+		return errors.New("models: update all requires at least one column argument")
 	}
 
 	colNames := make([]string, len(cols))
@@ -1118,16 +446,12 @@ func (o UserSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, col
 		fmt.Fprintln(writer, sql)
 		fmt.Fprintln(writer, args...)
 	}
-	result, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.ExecContext(ctx, sql, args...)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to update all in user slice")
+		return errors.Wrap(err, "models: unable to update all in user slice")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to retrieve rows affected all in update all user")
-	}
-	return rowsAff, nil
+	return nil
 }
 
 // Upsert attempts an insert using an executor, and does an update or ignore on conflict.
@@ -1251,9 +575,9 @@ func (o *User) Upsert(ctx context.Context, exec boil.ContextExecutor, updateOnCo
 
 // Delete deletes a single User record with an executor.
 // Delete will match against the primary key column to find the record to delete.
-func (o *User) Delete(ctx context.Context, exec boil.ContextExecutor) (int64, error) {
+func (o *User) Delete(ctx context.Context, exec boil.ContextExecutor) error {
 	if o == nil {
-		return 0, errors.New("models: no User provided for delete")
+		return errors.New("models: no User provided for delete")
 	}
 
 	args := queries.ValuesFromMapping(reflect.Indirect(reflect.ValueOf(o)), userPrimaryKeyMapping)
@@ -1264,44 +588,34 @@ func (o *User) Delete(ctx context.Context, exec boil.ContextExecutor) (int64, er
 		fmt.Fprintln(writer, sql)
 		fmt.Fprintln(writer, args...)
 	}
-	result, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.ExecContext(ctx, sql, args...)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to delete from users")
+		return errors.Wrap(err, "models: unable to delete from users")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: failed to get rows affected by delete for users")
-	}
-
-	return rowsAff, nil
+	return nil
 }
 
 // DeleteAll deletes all matching rows.
-func (q userQuery) DeleteAll(ctx context.Context, exec boil.ContextExecutor) (int64, error) {
+func (q userQuery) DeleteAll(ctx context.Context, exec boil.ContextExecutor) error {
 	if q.Query == nil {
-		return 0, errors.New("models: no userQuery provided for delete all")
+		return errors.New("models: no userQuery provided for delete all")
 	}
 
 	queries.SetDelete(q.Query)
 
-	result, err := q.Query.ExecContext(ctx, exec)
+	_, err := q.Query.ExecContext(ctx, exec)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to delete all from users")
+		return errors.Wrap(err, "models: unable to delete all from users")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: failed to get rows affected by deleteall for users")
-	}
-
-	return rowsAff, nil
+	return nil
 }
 
 // DeleteAll deletes all rows in the slice, using an executor.
-func (o UserSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) (int64, error) {
+func (o UserSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) error {
 	if len(o) == 0 {
-		return 0, nil
+		return nil
 	}
 
 	var args []interface{}
@@ -1318,17 +632,12 @@ func (o UserSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) (in
 		fmt.Fprintln(writer, sql)
 		fmt.Fprintln(writer, args)
 	}
-	result, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.ExecContext(ctx, sql, args...)
 	if err != nil {
-		return 0, errors.Wrap(err, "models: unable to delete all from user slice")
+		return errors.Wrap(err, "models: unable to delete all from user slice")
 	}
 
-	rowsAff, err := result.RowsAffected()
-	if err != nil {
-		return 0, errors.Wrap(err, "models: failed to get rows affected by deleteall for users")
-	}
-
-	return rowsAff, nil
+	return nil
 }
 
 // Reload refetches the object from the database
