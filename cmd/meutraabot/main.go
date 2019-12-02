@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"gitlab.com/meutraa/meutraabot/cmd/meutraabot/modules/back"
@@ -46,12 +45,12 @@ func runFirst(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, fu
 }
 
 func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessage) {
-	db.AddWatchTime(msg.Channel, msg.Sender)
-
-	wordCount := len(strings.Split(msg.Message, " "))
-	if err := db.AddToIntUserMetric(msg.Channel, msg.Sender, "word_count", int64(wordCount)); nil != err {
-		log.Println(msg, "unable to update word_count for user:", err)
+	// Save message
+	if err := db.AddMessage(msg.Channel, msg.Sender, msg.OriginalMessage); nil != err {
+		log.Println(msg, err)
 	}
+
+	db.UpdateMetrics(msg.Channel, msg.Sender, msg.Message)
 
 	// Commands that do not contribute to message count
 	if runFirst(client, db, msg,
@@ -66,16 +65,6 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 		management.LeaveResponse,
 	) {
 		return
-	}
-
-	// Update user metrics for word and message count
-	if err := db.AddToIntUserMetric(msg.Channel, msg.Sender, "message_count", 1); nil != err {
-		log.Println(msg, "unable to update message_count for user:", err)
-	}
-
-	// Save message
-	if err := db.AddMessage(msg.Channel, msg.Sender, msg.OriginalMessage); nil != err {
-		log.Println(msg, err)
 	}
 
 	// Responses that do count towards the message count

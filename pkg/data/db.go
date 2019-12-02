@@ -15,7 +15,7 @@ type Database struct {
 
 func Connection(connectionString string, activeInterval int64) (*Database, error) {
 	orm, err := gorm.Open("postgres", connectionString)
-	orm.LogMode(true)
+	// orm.LogMode(true)
 	if nil != err {
 		return nil, errors.Wrap(err, "unable to establish connection to database")
 	}

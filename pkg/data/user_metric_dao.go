@@ -2,6 +2,7 @@ package data
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	"github.com/jinzhu/gorm"
@@ -20,13 +21,18 @@ func (d *Database) UsersWithTopWatchTime(channel string, limit int) ([]UserMetri
 	return users, nil
 }
 
-func (d *Database) AddWatchTime(channel, sender string) {
+func (d *Database) UpdateMetrics(channel, sender, text string) {
+	wordCount := len(strings.Split(text, " "))
 	now := time.Now()
-	err := d.orm.Model(&UserMetric{}).
-		Where("channel_name = ? AND sender = ? AND (? - updated_at) < ?", channel, sender, now, d.activeInterval).
-		Update("watch_time", gorm.Expr("watch_time + cast(extract(epoch from (? - updated_at)) AS bigint)", now)).Error
-	if nil != err {
-		log.Println("Unable to update watch time for user", sender, "in channel", channel, ":", err)
+
+	if err := d.orm.Model(&UserMetric{}).
+		Where("channel_name = ? AND sender = ?", channel, sender).
+		Updates(map[string]interface{}{
+			"watch_time":    gorm.Expr("CASE WHEN ((? - updated_at) < ?) THEN watch_time + cast(extract(epoch from (? - updated_at)) AS bigint) ELSE watch_time END", now, d.activeInterval, now),
+			"message_count": gorm.Expr("message_count + ?", 1),
+			"word_count":    gorm.Expr("word_count + ?", wordCount),
+		}).Error; nil != err {
+		log.Println("Unable to update user metrics:", err)
 	}
 }
 

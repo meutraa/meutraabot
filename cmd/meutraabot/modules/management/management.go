@@ -1,6 +1,7 @@
 package management
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -22,13 +23,9 @@ func (e PartError) Error() string {
 	return "Part channel requested"
 }
 
-const version = "1.3.1"
+const version = "1.3.3"
 
-var metrics = CodeMetrics{
-	Lines:1062,
-	Words:3490,
-	Characters:28552,
-}
+const sloc = 1025
 
 func VersionResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
 	if text == "!version" {
@@ -41,7 +38,7 @@ func CodeResponse(db *data.Database, channel, sender, text string) (string, bool
 	if text != "!code" {
 		return "", false, nil
 	}
-	return metrics.String(), true, nil
+	return fmt.Sprintf("%v lines of code", sloc), true, nil
 }
 
 func LeaveResponse(db *data.Database, channel, sender, text string) (string, bool, error) {
