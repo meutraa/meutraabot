@@ -5,18 +5,19 @@ package main
 import (
 	"html/template"
 	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
 
 	"gitlab.com/meutraa/meutraabot/pkg/data"
-	"gitlab.com/meutraa/meutraabot/pkg/env"
 )
 
 func main() {
 	// Read our environment variables, end if failure
-	var connectionString, listenAddress string
-	if !env.ListenAddress(&listenAddress) ||
-		!env.PostgresConnectionString(&connectionString) {
+	listenAddress := os.Getenv("LISTEN_ADDRESS")
+	connString := os.Getenv("POSTGRES_CONNECTION_STRING")
+	if "" == listenAddress || "" == connString {
+		log.Println("Unable to read environment variable")
 		return
 	}
 
@@ -30,7 +31,7 @@ func main() {
 		log.Fatalln("Unable to parse template string")
 	}
 
-	db, err := data.Connection(connectionString, 0)
+	db, err := data.Connection(connString, 0)
 	if nil != err {
 		log.Fatalln("Unable to open db connection:", err)
 	}
