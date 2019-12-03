@@ -96,13 +96,15 @@ func handleCommand(db *data.Database, client *irc.Client, botname, channel, send
 	case "!metrics", "!metric":
 		return watchTimeHandler(db, channel, sender)
 	case "!code":
-		return fmt.Sprintf("%v lines of code", 437)
+		return fmt.Sprintf("%v lines of code", 460)
 	case "!restart":
 		return restartHandler(db, client, botname, sender)
 	case "!leave":
 		return leaveHandler(db, client, botname, channel, sender)
+	case "!join":
+		return joinHandler(db, client, botname, channel, sender)
 	case "!version":
-		return "1.4.6"
+		return "1.5.0"
 	case "!emoji":
 		return emojiHandler(db, channel, sender, text)
 	case "hey", "hello", "howdy", "hi",
@@ -238,6 +240,27 @@ func sleepHandler(sender, text string) (string, bool) {
 		!strings.Contains(text, "not sleep")
 }
 
+func joinHandler(db *data.Database, client *irc.Client, botname, channel, sender string) string {
+	if "#"+botname != channel {
+		return ""
+	}
+
+	ch := models.Channel{ChannelName: "#" + sender}
+	if err := ch.Upsert(db.Context, db.DB, false, nil, boil.Whitelist(), boil.Infer()); nil != err {
+		log.Println("Unable to insert channel:", err)
+		return ""
+	}
+
+	if err := client.JoinChannel(ch.ChannelName); nil != err {
+		return "Failed to join channel"
+	}
+
+	if err := client.SendMessage(ch.ChannelName, "Hi 🙋"); nil != err {
+		log.Println("Failed to send welcome message", err)
+	}
+	return "Bye bye 👋"
+}
+
 func leaveHandler(db *data.Database, client *irc.Client, botname, channel, sender string) string {
 	if "#"+sender != channel {
 		return ""
@@ -250,7 +273,9 @@ func leaveHandler(db *data.Database, client *irc.Client, botname, channel, sende
 
 	go func() {
 		time.Sleep(5 * time.Second)
-		client.PartChannel(channel)
+		if err := client.PartChannel(channel); nil != err {
+			log.Println("Failed to leave channel", channel, ":", err)
+		}
 	}()
 	return "Bye bye 👋"
 }
@@ -299,7 +324,9 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 		ChannelName: msg.Channel,
 		Sender:      msg.Sender,
 	}
-	u.Upsert(db.Context, db.DB, false, nil, boil.Whitelist(), boil.Infer())
+	if err := u.Upsert(db.Context, db.DB, false, nil, boil.Whitelist(), boil.Infer()); nil != err {
+		log.Println("Unable to upsert user:", err)
+	}
 
 	// Save message
 	message := models.Message{
