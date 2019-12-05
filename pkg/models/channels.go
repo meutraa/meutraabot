@@ -4,7 +4,6 @@
 package models
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -28,6 +27,8 @@ type Channel struct {
 	CreatedAt   time.Time `boil:"created_at" json:"created_at" toml:"created_at" yaml:"created_at"`
 	UpdatedAt   null.Time `boil:"updated_at" json:"updated_at,omitempty" toml:"updated_at" yaml:"updated_at,omitempty"`
 	HiccupCount int64     `boil:"hiccup_count" json:"hiccup_count" toml:"hiccup_count" yaml:"hiccup_count"`
+	ID          int       `boil:"id" json:"id" toml:"id" yaml:"id"`
+	DeletedAt   null.Time `boil:"deleted_at" json:"deleted_at,omitempty" toml:"deleted_at" yaml:"deleted_at,omitempty"`
 
 	R *channelR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L channelL  `boil:"-" json:"-" toml:"-" yaml:"-"`
@@ -38,11 +39,15 @@ var ChannelColumns = struct {
 	CreatedAt   string
 	UpdatedAt   string
 	HiccupCount string
+	ID          string
+	DeletedAt   string
 }{
 	ChannelName: "channel_name",
 	CreatedAt:   "created_at",
 	UpdatedAt:   "updated_at",
 	HiccupCount: "hiccup_count",
+	ID:          "id",
+	DeletedAt:   "deleted_at",
 }
 
 // Generated where
@@ -123,16 +128,36 @@ func (w whereHelperint64) IN(slice []int64) qm.QueryMod {
 	return qm.WhereIn(fmt.Sprintf("%s IN ?", w.field), values...)
 }
 
+type whereHelperint struct{ field string }
+
+func (w whereHelperint) EQ(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.EQ, x) }
+func (w whereHelperint) NEQ(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.NEQ, x) }
+func (w whereHelperint) LT(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.LT, x) }
+func (w whereHelperint) LTE(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.LTE, x) }
+func (w whereHelperint) GT(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.GT, x) }
+func (w whereHelperint) GTE(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.GTE, x) }
+func (w whereHelperint) IN(slice []int) qm.QueryMod {
+	values := make([]interface{}, 0, len(slice))
+	for _, value := range slice {
+		values = append(values, value)
+	}
+	return qm.WhereIn(fmt.Sprintf("%s IN ?", w.field), values...)
+}
+
 var ChannelWhere = struct {
 	ChannelName whereHelperstring
 	CreatedAt   whereHelpertime_Time
 	UpdatedAt   whereHelpernull_Time
 	HiccupCount whereHelperint64
+	ID          whereHelperint
+	DeletedAt   whereHelpernull_Time
 }{
 	ChannelName: whereHelperstring{field: "\"channels\".\"channel_name\""},
 	CreatedAt:   whereHelpertime_Time{field: "\"channels\".\"created_at\""},
 	UpdatedAt:   whereHelpernull_Time{field: "\"channels\".\"updated_at\""},
 	HiccupCount: whereHelperint64{field: "\"channels\".\"hiccup_count\""},
+	ID:          whereHelperint{field: "\"channels\".\"id\""},
+	DeletedAt:   whereHelpernull_Time{field: "\"channels\".\"deleted_at\""},
 }
 
 // ChannelRels is where relationship names are stored.
@@ -152,9 +177,9 @@ func (*channelR) NewStruct() *channelR {
 type channelL struct{}
 
 var (
-	channelAllColumns            = []string{"channel_name", "created_at", "updated_at", "hiccup_count"}
-	channelColumnsWithoutDefault = []string{"channel_name", "created_at", "updated_at", "hiccup_count"}
-	channelColumnsWithDefault    = []string{}
+	channelAllColumns            = []string{"channel_name", "created_at", "updated_at", "hiccup_count", "id", "deleted_at"}
+	channelColumnsWithoutDefault = []string{"channel_name", "created_at", "updated_at", "hiccup_count", "deleted_at"}
+	channelColumnsWithDefault    = []string{"id"}
 	channelPrimaryKeyColumns     = []string{"channel_name"}
 )
 
@@ -189,13 +214,18 @@ var (
 	_ = qmhelper.Where
 )
 
+// OneG returns a single channel record from the query using the global executor.
+func (q channelQuery) OneG() (*Channel, error) {
+	return q.One(boil.GetDB())
+}
+
 // One returns a single channel record from the query.
-func (q channelQuery) One(ctx context.Context, exec boil.ContextExecutor) (*Channel, error) {
+func (q channelQuery) One(exec boil.Executor) (*Channel, error) {
 	o := &Channel{}
 
 	queries.SetLimit(q.Query, 1)
 
-	err := q.Bind(ctx, exec, o)
+	err := q.Bind(nil, exec, o)
 	if err != nil {
 		if errors.Cause(err) == sql.ErrNoRows {
 			return nil, sql.ErrNoRows
@@ -206,11 +236,16 @@ func (q channelQuery) One(ctx context.Context, exec boil.ContextExecutor) (*Chan
 	return o, nil
 }
 
+// AllG returns all Channel records from the query using the global executor.
+func (q channelQuery) AllG() (ChannelSlice, error) {
+	return q.All(boil.GetDB())
+}
+
 // All returns all Channel records from the query.
-func (q channelQuery) All(ctx context.Context, exec boil.ContextExecutor) (ChannelSlice, error) {
+func (q channelQuery) All(exec boil.Executor) (ChannelSlice, error) {
 	var o []*Channel
 
-	err := q.Bind(ctx, exec, &o)
+	err := q.Bind(nil, exec, &o)
 	if err != nil {
 		return nil, errors.Wrap(err, "models: failed to assign all query results to Channel slice")
 	}
@@ -218,14 +253,19 @@ func (q channelQuery) All(ctx context.Context, exec boil.ContextExecutor) (Chann
 	return o, nil
 }
 
+// CountG returns the count of all Channel records in the query, and panics on error.
+func (q channelQuery) CountG() (int64, error) {
+	return q.Count(boil.GetDB())
+}
+
 // Count returns the count of all Channel records in the query.
-func (q channelQuery) Count(ctx context.Context, exec boil.ContextExecutor) (int64, error) {
+func (q channelQuery) Count(exec boil.Executor) (int64, error) {
 	var count int64
 
 	queries.SetSelect(q.Query, nil)
 	queries.SetCount(q.Query)
 
-	err := q.Query.QueryRowContext(ctx, exec).Scan(&count)
+	err := q.Query.QueryRow(exec).Scan(&count)
 	if err != nil {
 		return 0, errors.Wrap(err, "models: failed to count channels rows")
 	}
@@ -233,15 +273,20 @@ func (q channelQuery) Count(ctx context.Context, exec boil.ContextExecutor) (int
 	return count, nil
 }
 
+// ExistsG checks if the row exists in the table, and panics on error.
+func (q channelQuery) ExistsG() (bool, error) {
+	return q.Exists(boil.GetDB())
+}
+
 // Exists checks if the row exists in the table.
-func (q channelQuery) Exists(ctx context.Context, exec boil.ContextExecutor) (bool, error) {
+func (q channelQuery) Exists(exec boil.Executor) (bool, error) {
 	var count int64
 
 	queries.SetSelect(q.Query, nil)
 	queries.SetCount(q.Query)
 	queries.SetLimit(q.Query, 1)
 
-	err := q.Query.QueryRowContext(ctx, exec).Scan(&count)
+	err := q.Query.QueryRow(exec).Scan(&count)
 	if err != nil {
 		return false, errors.Wrap(err, "models: failed to check if channels exists")
 	}
@@ -255,9 +300,14 @@ func Channels(mods ...qm.QueryMod) channelQuery {
 	return channelQuery{NewQuery(mods...)}
 }
 
+// FindChannelG retrieves a single record by ID.
+func FindChannelG(channelName string, selectCols ...string) (*Channel, error) {
+	return FindChannel(boil.GetDB(), channelName, selectCols...)
+}
+
 // FindChannel retrieves a single record by ID with an executor.
 // If selectCols is empty Find will return all columns.
-func FindChannel(ctx context.Context, exec boil.ContextExecutor, channelName string, selectCols ...string) (*Channel, error) {
+func FindChannel(exec boil.Executor, channelName string, selectCols ...string) (*Channel, error) {
 	channelObj := &Channel{}
 
 	sel := "*"
@@ -270,7 +320,7 @@ func FindChannel(ctx context.Context, exec boil.ContextExecutor, channelName str
 
 	q := queries.Raw(query, channelName)
 
-	err := q.Bind(ctx, exec, channelObj)
+	err := q.Bind(nil, exec, channelObj)
 	if err != nil {
 		if errors.Cause(err) == sql.ErrNoRows {
 			return nil, sql.ErrNoRows
@@ -281,23 +331,26 @@ func FindChannel(ctx context.Context, exec boil.ContextExecutor, channelName str
 	return channelObj, nil
 }
 
+// InsertG a single record. See Insert for whitelist behavior description.
+func (o *Channel) InsertG(columns boil.Columns) error {
+	return o.Insert(boil.GetDB(), columns)
+}
+
 // Insert a single record using an executor.
 // See boil.Columns.InsertColumnSet documentation to understand column list inference for inserts.
-func (o *Channel) Insert(ctx context.Context, exec boil.ContextExecutor, columns boil.Columns) error {
+func (o *Channel) Insert(exec boil.Executor, columns boil.Columns) error {
 	if o == nil {
 		return errors.New("models: no channels provided for insertion")
 	}
 
 	var err error
-	if !boil.TimestampsAreSkipped(ctx) {
-		currTime := time.Now().In(boil.GetLocation())
+	currTime := time.Now().In(boil.GetLocation())
 
-		if o.CreatedAt.IsZero() {
-			o.CreatedAt = currTime
-		}
-		if queries.MustTime(o.UpdatedAt).IsZero() {
-			queries.SetScanner(&o.UpdatedAt, currTime)
-		}
+	if o.CreatedAt.IsZero() {
+		o.CreatedAt = currTime
+	}
+	if queries.MustTime(o.UpdatedAt).IsZero() {
+		queries.SetScanner(&o.UpdatedAt, currTime)
 	}
 
 	nzDefaults := queries.NonZeroDefaultSet(channelColumnsWithDefault, o)
@@ -341,16 +394,15 @@ func (o *Channel) Insert(ctx context.Context, exec boil.ContextExecutor, columns
 	value := reflect.Indirect(reflect.ValueOf(o))
 	vals := queries.ValuesFromMapping(value, cache.valueMapping)
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, cache.query)
-		fmt.Fprintln(writer, vals)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, cache.query)
+		fmt.Fprintln(boil.DebugWriter, vals)
 	}
 
 	if len(cache.retMapping) != 0 {
-		err = exec.QueryRowContext(ctx, cache.query, vals...).Scan(queries.PtrsFromMapping(value, cache.retMapping)...)
+		err = exec.QueryRow(cache.query, vals...).Scan(queries.PtrsFromMapping(value, cache.retMapping)...)
 	} else {
-		_, err = exec.ExecContext(ctx, cache.query, vals...)
+		_, err = exec.Exec(cache.query, vals...)
 	}
 
 	if err != nil {
@@ -366,15 +418,19 @@ func (o *Channel) Insert(ctx context.Context, exec boil.ContextExecutor, columns
 	return nil
 }
 
+// UpdateG a single Channel record using the global executor.
+// See Update for more documentation.
+func (o *Channel) UpdateG(columns boil.Columns) error {
+	return o.Update(boil.GetDB(), columns)
+}
+
 // Update uses an executor to update the Channel.
 // See boil.Columns.UpdateColumnSet documentation to understand column list inference for updates.
 // Update does not automatically update the record in case of default values. Use .Reload() to refresh the records.
-func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns boil.Columns) error {
-	if !boil.TimestampsAreSkipped(ctx) {
-		currTime := time.Now().In(boil.GetLocation())
+func (o *Channel) Update(exec boil.Executor, columns boil.Columns) error {
+	currTime := time.Now().In(boil.GetLocation())
 
-		queries.SetScanner(&o.UpdatedAt, currTime)
-	}
+	queries.SetScanner(&o.UpdatedAt, currTime)
 
 	var err error
 	key := makeCacheKey(columns, nil)
@@ -407,12 +463,11 @@ func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns
 
 	values := queries.ValuesFromMapping(reflect.Indirect(reflect.ValueOf(o)), cache.valueMapping)
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, cache.query)
-		fmt.Fprintln(writer, values)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, cache.query)
+		fmt.Fprintln(boil.DebugWriter, values)
 	}
-	_, err = exec.ExecContext(ctx, cache.query, values...)
+	_, err = exec.Exec(cache.query, values...)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to update channels row")
 	}
@@ -426,11 +481,16 @@ func (o *Channel) Update(ctx context.Context, exec boil.ContextExecutor, columns
 	return nil
 }
 
+// UpdateAllG updates all rows with the specified column values.
+func (q channelQuery) UpdateAllG(cols M) error {
+	return q.UpdateAll(boil.GetDB(), cols)
+}
+
 // UpdateAll updates all rows with the specified column values.
-func (q channelQuery) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) error {
+func (q channelQuery) UpdateAll(exec boil.Executor, cols M) error {
 	queries.SetUpdate(q.Query, cols)
 
-	_, err := q.Query.ExecContext(ctx, exec)
+	_, err := q.Query.Exec(exec)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to update all for channels")
 	}
@@ -438,8 +498,13 @@ func (q channelQuery) UpdateAll(ctx context.Context, exec boil.ContextExecutor, 
 	return nil
 }
 
+// UpdateAllG updates all rows with the specified column values.
+func (o ChannelSlice) UpdateAllG(cols M) error {
+	return o.UpdateAll(boil.GetDB(), cols)
+}
+
 // UpdateAll updates all rows with the specified column values, using an executor.
-func (o ChannelSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) error {
+func (o ChannelSlice) UpdateAll(exec boil.Executor, cols M) error {
 	ln := int64(len(o))
 	if ln == 0 {
 		return nil
@@ -469,12 +534,11 @@ func (o ChannelSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, 
 		strmangle.SetParamNames("\"", "\"", 1, colNames),
 		strmangle.WhereClauseRepeated(string(dialect.LQ), string(dialect.RQ), len(colNames)+1, channelPrimaryKeyColumns, len(o)))
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, args...)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, sql)
+		fmt.Fprintln(boil.DebugWriter, args...)
 	}
-	_, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.Exec(sql, args...)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to update all in channel slice")
 	}
@@ -482,20 +546,23 @@ func (o ChannelSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, 
 	return nil
 }
 
+// UpsertG attempts an insert, and does an update or ignore on conflict.
+func (o *Channel) UpsertG(updateOnConflict bool, conflictColumns []string, updateColumns, insertColumns boil.Columns) error {
+	return o.Upsert(boil.GetDB(), updateOnConflict, conflictColumns, updateColumns, insertColumns)
+}
+
 // Upsert attempts an insert using an executor, and does an update or ignore on conflict.
 // See boil.Columns documentation for how to properly use updateColumns and insertColumns.
-func (o *Channel) Upsert(ctx context.Context, exec boil.ContextExecutor, updateOnConflict bool, conflictColumns []string, updateColumns, insertColumns boil.Columns) error {
+func (o *Channel) Upsert(exec boil.Executor, updateOnConflict bool, conflictColumns []string, updateColumns, insertColumns boil.Columns) error {
 	if o == nil {
 		return errors.New("models: no channels provided for upsert")
 	}
-	if !boil.TimestampsAreSkipped(ctx) {
-		currTime := time.Now().In(boil.GetLocation())
+	currTime := time.Now().In(boil.GetLocation())
 
-		if o.CreatedAt.IsZero() {
-			o.CreatedAt = currTime
-		}
-		queries.SetScanner(&o.UpdatedAt, currTime)
+	if o.CreatedAt.IsZero() {
+		o.CreatedAt = currTime
 	}
+	queries.SetScanner(&o.UpdatedAt, currTime)
 
 	nzDefaults := queries.NonZeroDefaultSet(channelColumnsWithDefault, o)
 
@@ -575,18 +642,17 @@ func (o *Channel) Upsert(ctx context.Context, exec boil.ContextExecutor, updateO
 		returns = queries.PtrsFromMapping(value, cache.retMapping)
 	}
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, cache.query)
-		fmt.Fprintln(writer, vals)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, cache.query)
+		fmt.Fprintln(boil.DebugWriter, vals)
 	}
 	if len(cache.retMapping) != 0 {
-		err = exec.QueryRowContext(ctx, cache.query, vals...).Scan(returns...)
+		err = exec.QueryRow(cache.query, vals...).Scan(returns...)
 		if err == sql.ErrNoRows {
 			err = nil // Postgres doesn't return anything when there's no update
 		}
 	} else {
-		_, err = exec.ExecContext(ctx, cache.query, vals...)
+		_, err = exec.Exec(cache.query, vals...)
 	}
 	if err != nil {
 		return errors.Wrap(err, "models: unable to upsert channels")
@@ -601,9 +667,15 @@ func (o *Channel) Upsert(ctx context.Context, exec boil.ContextExecutor, updateO
 	return nil
 }
 
+// DeleteG deletes a single Channel record.
+// DeleteG will match against the primary key column to find the record to delete.
+func (o *Channel) DeleteG() error {
+	return o.Delete(boil.GetDB())
+}
+
 // Delete deletes a single Channel record with an executor.
 // Delete will match against the primary key column to find the record to delete.
-func (o *Channel) Delete(ctx context.Context, exec boil.ContextExecutor) error {
+func (o *Channel) Delete(exec boil.Executor) error {
 	if o == nil {
 		return errors.New("models: no Channel provided for delete")
 	}
@@ -611,12 +683,11 @@ func (o *Channel) Delete(ctx context.Context, exec boil.ContextExecutor) error {
 	args := queries.ValuesFromMapping(reflect.Indirect(reflect.ValueOf(o)), channelPrimaryKeyMapping)
 	sql := "DELETE FROM \"channels\" WHERE \"channel_name\"=$1"
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, args...)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, sql)
+		fmt.Fprintln(boil.DebugWriter, args...)
 	}
-	_, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.Exec(sql, args...)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to delete from channels")
 	}
@@ -625,14 +696,14 @@ func (o *Channel) Delete(ctx context.Context, exec boil.ContextExecutor) error {
 }
 
 // DeleteAll deletes all matching rows.
-func (q channelQuery) DeleteAll(ctx context.Context, exec boil.ContextExecutor) error {
+func (q channelQuery) DeleteAll(exec boil.Executor) error {
 	if q.Query == nil {
 		return errors.New("models: no channelQuery provided for delete all")
 	}
 
 	queries.SetDelete(q.Query)
 
-	_, err := q.Query.ExecContext(ctx, exec)
+	_, err := q.Query.Exec(exec)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to delete all from channels")
 	}
@@ -640,8 +711,13 @@ func (q channelQuery) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 	return nil
 }
 
+// DeleteAllG deletes all rows in the slice.
+func (o ChannelSlice) DeleteAllG() error {
+	return o.DeleteAll(boil.GetDB())
+}
+
 // DeleteAll deletes all rows in the slice, using an executor.
-func (o ChannelSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) error {
+func (o ChannelSlice) DeleteAll(exec boil.Executor) error {
 	if len(o) == 0 {
 		return nil
 	}
@@ -655,12 +731,11 @@ func (o ChannelSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 	sql := "DELETE FROM \"channels\" WHERE " +
 		strmangle.WhereClauseRepeated(string(dialect.LQ), string(dialect.RQ), 1, channelPrimaryKeyColumns, len(o))
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, args)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, sql)
+		fmt.Fprintln(boil.DebugWriter, args)
 	}
-	_, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.Exec(sql, args...)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to delete all from channel slice")
 	}
@@ -668,10 +743,19 @@ func (o ChannelSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 	return nil
 }
 
+// ReloadG refetches the object from the database using the primary keys.
+func (o *Channel) ReloadG() error {
+	if o == nil {
+		return errors.New("models: no Channel provided for reload")
+	}
+
+	return o.Reload(boil.GetDB())
+}
+
 // Reload refetches the object from the database
 // using the primary keys with an executor.
-func (o *Channel) Reload(ctx context.Context, exec boil.ContextExecutor) error {
-	ret, err := FindChannel(ctx, exec, o.ChannelName)
+func (o *Channel) Reload(exec boil.Executor) error {
+	ret, err := FindChannel(exec, o.ChannelName)
 	if err != nil {
 		return err
 	}
@@ -680,9 +764,19 @@ func (o *Channel) Reload(ctx context.Context, exec boil.ContextExecutor) error {
 	return nil
 }
 
+// ReloadAllG refetches every row with matching primary key column values
+// and overwrites the original object slice with the newly updated slice.
+func (o *ChannelSlice) ReloadAllG() error {
+	if o == nil {
+		return errors.New("models: empty ChannelSlice provided for reload all")
+	}
+
+	return o.ReloadAll(boil.GetDB())
+}
+
 // ReloadAll refetches every row with matching primary key column values
 // and overwrites the original object slice with the newly updated slice.
-func (o *ChannelSlice) ReloadAll(ctx context.Context, exec boil.ContextExecutor) error {
+func (o *ChannelSlice) ReloadAll(exec boil.Executor) error {
 	if o == nil || len(*o) == 0 {
 		return nil
 	}
@@ -699,7 +793,7 @@ func (o *ChannelSlice) ReloadAll(ctx context.Context, exec boil.ContextExecutor)
 
 	q := queries.Raw(sql, args...)
 
-	err := q.Bind(ctx, exec, &slice)
+	err := q.Bind(nil, exec, &slice)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to reload all in ChannelSlice")
 	}
@@ -709,17 +803,21 @@ func (o *ChannelSlice) ReloadAll(ctx context.Context, exec boil.ContextExecutor)
 	return nil
 }
 
+// ChannelExistsG checks if the Channel row exists.
+func ChannelExistsG(channelName string) (bool, error) {
+	return ChannelExists(boil.GetDB(), channelName)
+}
+
 // ChannelExists checks if the Channel row exists.
-func ChannelExists(ctx context.Context, exec boil.ContextExecutor, channelName string) (bool, error) {
+func ChannelExists(exec boil.Executor, channelName string) (bool, error) {
 	var exists bool
 	sql := "select exists(select 1 from \"channels\" where \"channel_name\"=$1 limit 1)"
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, channelName)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, sql)
+		fmt.Fprintln(boil.DebugWriter, channelName)
 	}
-	row := exec.QueryRowContext(ctx, sql, channelName)
+	row := exec.QueryRow(sql, channelName)
 
 	err := row.Scan(&exists)
 	if err != nil {

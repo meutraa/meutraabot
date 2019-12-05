@@ -12,8 +12,10 @@ require (
 	github.com/lib/pq v1.1.1
 	github.com/pkg/errors v0.8.1
 	github.com/spf13/viper v1.5.0
+	github.com/thoj/go-ircevent v0.0.0-20190807115034-8e7ce4b5a1eb
 	github.com/volatiletech/inflect v0.0.0-20170731032912-e7201282ae8d // indirect
 	github.com/volatiletech/null v8.0.0+incompatible
 	github.com/volatiletech/sqlboiler v3.6.1+incompatible
-	golang.org/x/text v0.3.1-0.20180807135948-17ff2d5776d2
+	golang.org/x/text v0.3.2
+	nhooyr.io/websocket v1.7.4
 )

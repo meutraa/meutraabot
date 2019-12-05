@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"database/sql"
 	"fmt"
 	"log"
 	"math/rand"
@@ -13,132 +13,191 @@ import (
 	"time"
 	"unicode/utf8"
 
+	_ "github.com/lib/pq"
+	ircevent "github.com/thoj/go-ircevent"
 	"github.com/volatiletech/null"
 	"github.com/volatiletech/sqlboiler/boil"
 	. "github.com/volatiletech/sqlboiler/queries/qm"
-	"gitlab.com/meutraa/meutraabot/pkg/data"
-	"gitlab.com/meutraa/meutraabot/pkg/irc"
 	"gitlab.com/meutraa/meutraabot/pkg/models"
 )
 
+var irc *ircevent.Connection
+var username string
+var greetings = [...]string{
+	"Hello", "Howdy", "Salutations", "Greetings",
+	"Hi", "Welcome", "Good day", "Hey",
+}
+var colors = [...]string{
+	"#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea",
+}
+
+const activeInterval = 600
+
+func complain(err error) {
+	if nil != err {
+		log.Println(err)
+	}
+}
+
 func main() {
 	// Read our username from the environment, end if failure
-	username := os.Getenv("TWITCH_USERNAME")
+	username = os.Getenv("TWITCH_USERNAME")
 	oauth := os.Getenv("TWITCH_OAUTH_TOKEN")
 	connString := os.Getenv("POSTGRES_CONNECTION_STRING")
-	activeInterval, _ := strconv.ParseInt(os.Getenv("ACTIVE_INTERVAL"), 10, 64)
 
-	if "" == username || "" == connString || 0 == activeInterval || "" == oauth {
+	if "" == username || "" == connString || "" == oauth {
 		log.Println("Missing environment variable")
 		return
 	}
 
 	// Create a connection to our database, end if failure
-	db, err := data.Connection(connString, activeInterval)
-	if nil != err {
-		cleanup(db, nil, err)
+	if db, err := sql.Open("postgres", connString); nil != err {
+		log.Println("unable to establish connection to database", err)
+		return
+	} else {
+		// boil.DebugMode = true
+		boil.SetDB(db)
+		defer func() {
+			if err := db.Close(); nil != err {
+				log.Println("Unable to close database connection:", err)
+			}
+		}()
 	}
 
 	// Create a channel for the OS to notify us of interrupts/signals
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
-	// Create a websocket connection to the IRC server, end if failure
-	client, err := irc.NewClient()
-	if nil != err {
-		cleanup(db, client, err)
-	}
-
-	// Authenticate with our IRC connection, end if failure
-	if err := client.Authenticate(username, oauth); nil != err {
-		cleanup(db, client, err)
-	}
-
-	// Register a function for handling IRC private messages
-	messages := make(chan *irc.PrivateMessage, 16)
-	done := make(chan bool, 1)
-	go client.SetMessageChannel(messages, done)
-
-	// Join our own channel, if this fails, end program
-	if err := client.JoinChannel("#" + username); nil != err {
-		cleanup(db, client, err)
-	}
-
-	// Get a list of all our channel
-	channels, err := models.Channels().All(db.Context, db.DB)
-	if nil != err {
-		log.Println(err)
-	}
-
-	// Try to join all channels in our channel table
-	for _, channel := range channels {
-		if err := client.JoinChannel(channel.ChannelName); nil != err {
-			log.Println(err)
+	irc = ircevent.IRC(username, username)
+	defer func() {
+		if nil != irc {
+			irc.Quit()
+			irc.Disconnect()
 		}
+	}()
+	irc.UseTLS = true
+	irc.Password = oauth
+	irc.AddCallback("001", func(e *ircevent.Event) {
+		irc.Join("#" + username)
+		// Get a list of all our channel
+		if channels, err := models.Channels().AllG(); nil != err {
+			log.Println(err)
+		} else {
+			// Try to join all channels in our channel table
+			for _, channel := range channels {
+				irc.Join(channel.ChannelName)
+			}
+		}
+	})
+	irc.AddCallback("PRIVMSG", func(e *ircevent.Event) {
+		handleMessage(e, e.Arguments[0])
+	})
+	irc.AddCallback("PING", func(e *ircevent.Event) {
+		irc.SendRaw("PONG :tmi.twitch.tv")
+	})
+	if err := irc.Connect("irc.chat.twitch.tv:6697"); nil != err {
+		return
 	}
+
+	done := make(chan bool, 1)
+	go func() {
+		irc.Loop()
+		done <- true
+	}()
 
 	for {
 		select {
-		case msg := <-messages:
-			go handleMessage(client, db, msg, username)
 		case <-done:
-			cleanup(db, client, errors.New("Program is done"))
+			log.Println("program is done")
 			return
 		case <-interrupt:
-			cleanup(db, client, errors.New("Interupt received"))
+			log.Println("interupt received")
 			return
 		}
 	}
 }
 
-func handleCommand(db *data.Database, client *irc.Client, botname, channel, sender, text string) string {
-	switch strings.SplitN(text, " ", 2)[0] {
-	case "!metrics", "!metric":
-		return watchTimeHandler(db, channel, sender)
-	case "!code":
-		return fmt.Sprintf("%v lines of code", 464)
-	case "!restart":
-		return restartHandler(db, client, botname, sender)
-	case "!leave":
-		return leaveHandler(db, client, botname, channel, sender)
-	case "!join":
-		return joinHandler(db, client, botname, channel, sender)
-	case "!version":
-		return "1.5.2"
-	case "!emoji":
-		return emojiHandler(db, channel, sender, text)
+func handleCommand(channel, sender, text string) string {
+	if username == sender { // This is the bot sending a message
+		if text == "!restart" {
+			go func() {
+				time.Sleep(5 * time.Second)
+				irc.Quit()
+				irc.Disconnect()
+				os.Exit(0)
+			}()
+			return "Restarting in 5 seconds"
+		}
+		return ""
+	}
+	if "#"+sender == channel { // This is the channel owner
+		if text == "!leave" {
+			if err := (&models.Channel{ChannelName: channel}).DeleteG(); nil != err {
+				return "Failed to leave channel"
+			}
+
+			go func() {
+				time.Sleep(1 * time.Second)
+				irc.Part(channel)
+			}()
+			return "Bye bye 👋"
+		}
 	}
 	switch text {
 	case "hey", "hello", "howdy", "hi",
 		"hey!", "hello!", "howdy!", "hi!",
 		"hey.", "hello.", "howdy.", "hi.":
-		return randomGreeting() + " " + sender + "!"
-	}
+		return greetings[rand.Intn(len(greetings)-1)] + " " + sender + "!"
+	case "!metrics", "!metric":
+		return watchTimeHandler(channel, sender)
+	case "!code":
+		return fmt.Sprintf("%v lines of code", 297)
+	case "!join": // A user can request meutbot join from any channel
+		ch := models.Channel{ChannelName: "#" + sender}
+		if err := ch.UpsertG(false, nil, boil.Whitelist(), boil.Infer()); nil != err {
+			log.Println("Unable to insert channel:", err)
+			return ""
+		}
 
-	if sender == botname {
+		irc.Join(ch.ChannelName)
+		irc.Privmsg(ch.ChannelName, "Hi 🙋")
 		return ""
+	case "!version":
+		return "1.6.3"
 	}
 
-	if msg, valid := backHandler(sender, text); valid {
-		return msg
+	switch strings.SplitN(text, " ", 2)[0] {
+	case "!emoji":
+		return emojiHandler(channel, sender, text)
 	}
-	if msg, valid := vulpseHandler(db, channel, sender, text); valid {
+
+	// I'm back functionality
+	if strings.HasPrefix(text, "i'm back") ||
+		strings.HasPrefix(text, "i am back") ||
+		text == "back" ||
+		strings.HasPrefix(text, "im back") {
+		return "Hi back, I thought your name was " + sender + " 🤔."
+	}
+	if msg, valid := vulpseHandler(channel, sender, text); valid {
 		return msg
 	}
 	return ""
 }
 
-func vulpseHandler(db *data.Database, channel, sender, text string) (string, bool) {
+func vulpseHandler(channel, sender, text string) (string, bool) {
 	if channel != "#vulpesmusketeer" {
 		return "", false
 	}
 
-	if msg, valid := sleepHandler(sender, text); valid {
-		return msg, true
+	if (strings.HasPrefix(text, "😴") ||
+		strings.Contains(text, "sleep")) &&
+		!strings.Contains(text, "no sleep") &&
+		!strings.Contains(text, "not sleep") {
+		return "No sleep.", true
 	}
 
 	if text == "h" {
-		channel, err := models.FindChannel(db.Context, db.DB, channel)
+		channel, err := models.FindChannelG(channel)
 		if nil != err {
 			log.Println("Unable to find channel", err)
 			return "", true
@@ -146,7 +205,7 @@ func vulpseHandler(db *data.Database, channel, sender, text string) (string, boo
 
 		channel.HiccupCount += 1
 
-		err = channel.Update(db.Context, db.DB, boil.Whitelist(models.ChannelColumns.HiccupCount))
+		err = channel.UpdateG(boil.Whitelist(models.ChannelColumns.HiccupCount))
 		if nil != err {
 			log.Println("Unable to update hiccup_count", err)
 		}
@@ -160,31 +219,23 @@ func vulpseHandler(db *data.Database, channel, sender, text string) (string, boo
 		sender == "biological" ||
 		sender == "tristantwist_" {
 		if len(text) >= 2 && text[:2] == "h " {
-			countStr := text[2:]
-			count, err := strconv.ParseInt(countStr, 10, 64)
+			count, err := strconv.ParseInt(text[2:], 10, 64)
 			if nil != err {
 				return "Unable to parse count!: " + err.Error(), true
 			}
 
-			channel, err := models.FindChannel(db.Context, db.DB, channel)
-			if nil != err {
+			if channel, err := models.FindChannelG(channel); nil != err {
 				log.Println("Unable to find channel", err)
-				return "", true
+			} else {
+				channel.HiccupCount += count
+				complain(channel.UpdateG(boil.Whitelist(models.ChannelColumns.HiccupCount)))
 			}
-
-			channel.HiccupCount += count
-
-			err = channel.Update(db.Context, db.DB, boil.Whitelist(models.ChannelColumns.HiccupCount))
-			if nil != err {
-				log.Println("Unable to update hiccup_count", err)
-			}
-
 			return "", true
 		}
 	}
 
 	if strings.HasPrefix(text, "!hiccups") {
-		channel, err := models.FindChannel(db.Context, db.DB, channel)
+		channel, err := models.FindChannelG(channel)
 		if nil != err {
 			log.Println("Unable to find channel", err)
 			return "", true
@@ -194,7 +245,7 @@ func vulpseHandler(db *data.Database, channel, sender, text string) (string, boo
 	return "", false
 }
 
-func emojiHandler(db *data.Database, channel, sender, text string) string {
+func emojiHandler(channel, sender, text string) string {
 	parts := strings.Split(text, " ")
 	if len(parts) != 2 {
 		return ""
@@ -211,7 +262,7 @@ func emojiHandler(db *data.Database, channel, sender, text string) string {
 		models.UserWhere.ChannelName.EQ(channel),
 		OrderBy(models.UserColumns.WatchTime+" DESC"),
 		Limit(3),
-	).All(db.Context, db.DB)
+	).AllG()
 	if nil != err {
 		log.Println("Unable to get top 3 users", err)
 		return ""
@@ -230,193 +281,68 @@ func emojiHandler(db *data.Database, channel, sender, text string) string {
 	}
 
 	user.Emoji = null.String{String: string(rune), Valid: true}
-
-	err = user.Update(db.Context, db.DB, boil.Whitelist(models.UserColumns.Emoji))
-	if nil != err {
-		log.Println("Unable to set Emoji for user", sender, ":", err)
-	}
+	complain(user.UpdateG(boil.Whitelist(models.UserColumns.Emoji)))
 	return ""
 }
 
-func sleepHandler(sender, text string) (string, bool) {
-	return "No sleep.", (strings.HasPrefix(text, "😴") ||
-		strings.Contains(text, "sleep")) &&
-		!strings.Contains(text, "no sleep") &&
-		!strings.Contains(text, "not sleep")
-}
-
-func joinHandler(db *data.Database, client *irc.Client, botname, channel, sender string) string {
-	if "#"+botname != channel {
-		return ""
-	}
-
-	ch := models.Channel{ChannelName: "#" + sender}
-	if err := ch.Upsert(db.Context, db.DB, false, nil, boil.Whitelist(), boil.Infer()); nil != err {
-		log.Println("Unable to insert channel:", err)
-		return ""
-	}
-
-	if err := client.JoinChannel(ch.ChannelName); nil != err {
-		return "Failed to join channel"
-	}
-
-	if err := client.SendMessage(ch.ChannelName, "Hi 🙋"); nil != err {
-		log.Println("Failed to send welcome message", err)
-	}
-	return ""
-}
-
-func leaveHandler(db *data.Database, client *irc.Client, botname, channel, sender string) string {
-	if "#"+sender != channel {
-		return ""
-	}
-
-	ch := models.Channel{ChannelName: channel}
-	if err := ch.Delete(db.Context, db.DB); nil != err {
-		return "Failed to leave channel"
-	}
-
-	go func() {
-		time.Sleep(5 * time.Second)
-		if err := client.PartChannel(channel); nil != err {
-			log.Println("Failed to leave channel", channel, ":", err)
-		}
-	}()
-	return "Bye bye 👋"
-}
-
-func watchTimeHandler(db *data.Database, channel, sender string) string {
-	user, err := models.Users(
+func watchTimeHandler(channel, sender string) string {
+	if user, err := models.Users(
 		Where(
 			models.UserColumns.ChannelName+" = ? AND "+models.UserColumns.Sender+" = ?",
 			channel, sender),
-	).One(db.Context, db.DB)
-
-	if nil != err {
+	).OneG(); nil != err {
 		log.Println("Unable to lookup user for watch_time", err)
 		return ""
+	} else {
+		return fmt.Sprintf("%v active time, %v messages, %v words",
+			time.Duration(user.WatchTime*1000000000),
+			user.MessageCount,
+			user.WordCount)
 	}
-
-	return fmt.Sprintf("%v active time, %v messages, %v words",
-		time.Duration(user.WatchTime*1000000000),
-		user.MessageCount,
-		user.WordCount)
 }
 
-func backHandler(sender, text string) (string, bool) {
-	return "Hi back, I thought your name was " + sender + " 🤔.",
-		strings.HasPrefix(text, "i'm back") ||
-			strings.HasPrefix(text, "i am back") ||
-			text == "back" ||
-			strings.HasPrefix(text, "im back")
-}
-
-func restartHandler(db *data.Database, client *irc.Client, botname, sender string) string {
-	if sender != botname {
-		return ""
-	}
-
-	go func() {
-		time.Sleep(5 * time.Second)
-		cleanup(db, client, nil)
-	}()
-	return "Restarting in 5 seconds"
-}
-
-func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, botname string) {
+func handleMessage(e *ircevent.Event, channel string) {
 	// Insert a user if they do not exist
-	textColor := null.String{String: randomColor(), Valid: true}
-	u := models.User{
-		ChannelName: msg.Channel,
-		Sender:      msg.Sender,
-		TextColor:   textColor,
-	}
-	if err := u.Upsert(db.Context, db.DB, false, nil, boil.Whitelist(), boil.Infer()); nil != err {
-		log.Println("Unable to upsert user:", err)
-	}
+	complain((&models.User{
+		ChannelName: channel,
+		Sender:      e.Nick,
+	}).UpsertG(false, nil, boil.Whitelist(), boil.Infer()))
 
 	// Save message
-	message := models.Message{
-		ChannelName: msg.Channel,
-		Sender:      msg.Sender,
-		Message:     msg.OriginalMessage,
-	}
-	if err := message.Insert(db.Context, db.DB, boil.Infer()); nil != err {
-		log.Println(msg, err)
-	}
+	complain((&models.Message{
+		ChannelName: channel,
+		Sender:      e.Nick,
+		Message:     e.Message(),
+	}).InsertG(boil.Infer()))
 
 	// Get the user to update stats
-	user, err := models.Users(
+	if user, err := models.Users(
 		Where(
 			models.UserColumns.ChannelName+" = ? AND "+models.UserColumns.Sender+" = ?",
-			msg.Channel, msg.Sender),
-	).One(db.Context, db.DB)
-
-	if nil != err {
+			channel, e.Nick),
+	).OneG(); nil != err {
 		log.Println("Unable to find user to update metrics", err)
 	} else {
 		// Update user metrics
 		user.MessageCount += 1
-		user.WordCount += int64(len(strings.Split(msg.Message, " ")))
+		user.WordCount += int64(len(strings.Split(e.Message(), " ")))
 		if "" == user.TextColor.String {
-			user.TextColor = textColor
+			user.TextColor = null.String{String: colors[rand.Intn(len(colors)-1)], Valid: true}
 		}
 
-		now := time.Now()
 		if user.UpdatedAt.Valid {
-			diff := now.Sub(user.UpdatedAt.Time)
-			if diff.Seconds() < float64(db.ActiveInterval) {
+			diff := time.Now().Sub(user.UpdatedAt.Time)
+			if diff.Seconds() < float64(activeInterval) {
 				user.WatchTime += int64(diff.Seconds())
 			}
 		}
 
-		if err := user.Update(db.Context, db.DB, boil.Whitelist(
-			models.UserColumns.WatchTime,
-			models.UserColumns.MessageCount,
-			models.UserColumns.TextColor,
-			models.UserColumns.UpdatedAt,
-			models.UserColumns.WordCount,
-		)); nil != err {
-			log.Println("Unable to update user metrics", err)
-		}
+		complain(user.UpdateG(boil.Infer()))
 	}
 
-	res := handleCommand(db, client, botname, msg.Channel, msg.Sender, msg.Message)
-	diff := time.Now().Sub(msg.ReceivedTime)
-	log.Printf("[%v ms] %v:%v:%v < %v\n", diff.Milliseconds(), msg.Channel, msg.Sender, msg.OriginalMessage, res)
+	res := handleCommand(channel, e.Nick, strings.ToLower(e.Message()))
+	log.Printf("%v:%v:%v < %v\n", channel, e.Nick, e.Message(), res)
 	if "" != res {
-		if err := client.SendMessage(msg.Channel, res); nil != err {
-			log.Println("Unable to send message", err)
-		}
+		irc.Privmsg(channel, res)
 	}
-}
-
-func randomGreeting() string {
-	return [...]string{
-		"Hello", "Howdy", "Salutations", "Greetings", "Hi", "Welcome", "Good day", "Hey",
-	}[rand.Intn(7)]
-}
-
-func randomColor() string {
-	return [...]string{
-		"#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea",
-	}[rand.Intn(5)]
-}
-
-// Function to cleanup database and irc client before closing
-func cleanup(db *data.Database, client *irc.Client, err error) {
-	if nil != err {
-		log.Println(err)
-	}
-	if nil != db {
-		if err := db.Close(); nil != err {
-			log.Println("Unable to close database connection:", err)
-		}
-	}
-	if nil != client {
-		if err := client.Depart(); nil != err {
-			log.Println("write close:", err)
-		}
-	}
-	os.Exit(0)
 }

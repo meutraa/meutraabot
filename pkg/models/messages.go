@@ -4,7 +4,6 @@
 package models
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -30,6 +29,7 @@ type Message struct {
 	CreatedAt   time.Time `boil:"created_at" json:"created_at" toml:"created_at" yaml:"created_at"`
 	UpdatedAt   null.Time `boil:"updated_at" json:"updated_at,omitempty" toml:"updated_at" yaml:"updated_at,omitempty"`
 	Message     string    `boil:"message" json:"message" toml:"message" yaml:"message"`
+	DeletedAt   null.Time `boil:"deleted_at" json:"deleted_at,omitempty" toml:"deleted_at" yaml:"deleted_at,omitempty"`
 
 	R *messageR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L messageL  `boil:"-" json:"-" toml:"-" yaml:"-"`
@@ -42,6 +42,7 @@ var MessageColumns = struct {
 	CreatedAt   string
 	UpdatedAt   string
 	Message     string
+	DeletedAt   string
 }{
 	ID:          "id",
 	ChannelName: "channel_name",
@@ -49,25 +50,10 @@ var MessageColumns = struct {
 	CreatedAt:   "created_at",
 	UpdatedAt:   "updated_at",
 	Message:     "message",
+	DeletedAt:   "deleted_at",
 }
 
 // Generated where
-
-type whereHelperint struct{ field string }
-
-func (w whereHelperint) EQ(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.EQ, x) }
-func (w whereHelperint) NEQ(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.NEQ, x) }
-func (w whereHelperint) LT(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.LT, x) }
-func (w whereHelperint) LTE(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.LTE, x) }
-func (w whereHelperint) GT(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.GT, x) }
-func (w whereHelperint) GTE(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.GTE, x) }
-func (w whereHelperint) IN(slice []int) qm.QueryMod {
-	values := make([]interface{}, 0, len(slice))
-	for _, value := range slice {
-		values = append(values, value)
-	}
-	return qm.WhereIn(fmt.Sprintf("%s IN ?", w.field), values...)
-}
 
 var MessageWhere = struct {
 	ID          whereHelperint
@@ -76,6 +62,7 @@ var MessageWhere = struct {
 	CreatedAt   whereHelpertime_Time
 	UpdatedAt   whereHelpernull_Time
 	Message     whereHelperstring
+	DeletedAt   whereHelpernull_Time
 }{
 	ID:          whereHelperint{field: "\"messages\".\"id\""},
 	ChannelName: whereHelperstring{field: "\"messages\".\"channel_name\""},
@@ -83,6 +70,7 @@ var MessageWhere = struct {
 	CreatedAt:   whereHelpertime_Time{field: "\"messages\".\"created_at\""},
 	UpdatedAt:   whereHelpernull_Time{field: "\"messages\".\"updated_at\""},
 	Message:     whereHelperstring{field: "\"messages\".\"message\""},
+	DeletedAt:   whereHelpernull_Time{field: "\"messages\".\"deleted_at\""},
 }
 
 // MessageRels is where relationship names are stored.
@@ -102,8 +90,8 @@ func (*messageR) NewStruct() *messageR {
 type messageL struct{}
 
 var (
-	messageAllColumns            = []string{"id", "channel_name", "sender", "created_at", "updated_at", "message"}
-	messageColumnsWithoutDefault = []string{"channel_name", "sender", "created_at", "updated_at", "message"}
+	messageAllColumns            = []string{"id", "channel_name", "sender", "created_at", "updated_at", "message", "deleted_at"}
+	messageColumnsWithoutDefault = []string{"channel_name", "sender", "created_at", "updated_at", "message", "deleted_at"}
 	messageColumnsWithDefault    = []string{"id"}
 	messagePrimaryKeyColumns     = []string{"id"}
 )
@@ -139,13 +127,18 @@ var (
 	_ = qmhelper.Where
 )
 
+// OneG returns a single message record from the query using the global executor.
+func (q messageQuery) OneG() (*Message, error) {
+	return q.One(boil.GetDB())
+}
+
 // One returns a single message record from the query.
-func (q messageQuery) One(ctx context.Context, exec boil.ContextExecutor) (*Message, error) {
+func (q messageQuery) One(exec boil.Executor) (*Message, error) {
 	o := &Message{}
 
 	queries.SetLimit(q.Query, 1)
 
-	err := q.Bind(ctx, exec, o)
+	err := q.Bind(nil, exec, o)
 	if err != nil {
 		if errors.Cause(err) == sql.ErrNoRows {
 			return nil, sql.ErrNoRows
@@ -156,11 +149,16 @@ func (q messageQuery) One(ctx context.Context, exec boil.ContextExecutor) (*Mess
 	return o, nil
 }
 
+// AllG returns all Message records from the query using the global executor.
+func (q messageQuery) AllG() (MessageSlice, error) {
+	return q.All(boil.GetDB())
+}
+
 // All returns all Message records from the query.
-func (q messageQuery) All(ctx context.Context, exec boil.ContextExecutor) (MessageSlice, error) {
+func (q messageQuery) All(exec boil.Executor) (MessageSlice, error) {
 	var o []*Message
 
-	err := q.Bind(ctx, exec, &o)
+	err := q.Bind(nil, exec, &o)
 	if err != nil {
 		return nil, errors.Wrap(err, "models: failed to assign all query results to Message slice")
 	}
@@ -168,14 +166,19 @@ func (q messageQuery) All(ctx context.Context, exec boil.ContextExecutor) (Messa
 	return o, nil
 }
 
+// CountG returns the count of all Message records in the query, and panics on error.
+func (q messageQuery) CountG() (int64, error) {
+	return q.Count(boil.GetDB())
+}
+
 // Count returns the count of all Message records in the query.
-func (q messageQuery) Count(ctx context.Context, exec boil.ContextExecutor) (int64, error) {
+func (q messageQuery) Count(exec boil.Executor) (int64, error) {
 	var count int64
 
 	queries.SetSelect(q.Query, nil)
 	queries.SetCount(q.Query)
 
-	err := q.Query.QueryRowContext(ctx, exec).Scan(&count)
+	err := q.Query.QueryRow(exec).Scan(&count)
 	if err != nil {
 		return 0, errors.Wrap(err, "models: failed to count messages rows")
 	}
@@ -183,15 +186,20 @@ func (q messageQuery) Count(ctx context.Context, exec boil.ContextExecutor) (int
 	return count, nil
 }
 
+// ExistsG checks if the row exists in the table, and panics on error.
+func (q messageQuery) ExistsG() (bool, error) {
+	return q.Exists(boil.GetDB())
+}
+
 // Exists checks if the row exists in the table.
-func (q messageQuery) Exists(ctx context.Context, exec boil.ContextExecutor) (bool, error) {
+func (q messageQuery) Exists(exec boil.Executor) (bool, error) {
 	var count int64
 
 	queries.SetSelect(q.Query, nil)
 	queries.SetCount(q.Query)
 	queries.SetLimit(q.Query, 1)
 
-	err := q.Query.QueryRowContext(ctx, exec).Scan(&count)
+	err := q.Query.QueryRow(exec).Scan(&count)
 	if err != nil {
 		return false, errors.Wrap(err, "models: failed to check if messages exists")
 	}
@@ -205,9 +213,14 @@ func Messages(mods ...qm.QueryMod) messageQuery {
 	return messageQuery{NewQuery(mods...)}
 }
 
+// FindMessageG retrieves a single record by ID.
+func FindMessageG(iD int, selectCols ...string) (*Message, error) {
+	return FindMessage(boil.GetDB(), iD, selectCols...)
+}
+
 // FindMessage retrieves a single record by ID with an executor.
 // If selectCols is empty Find will return all columns.
-func FindMessage(ctx context.Context, exec boil.ContextExecutor, iD int, selectCols ...string) (*Message, error) {
+func FindMessage(exec boil.Executor, iD int, selectCols ...string) (*Message, error) {
 	messageObj := &Message{}
 
 	sel := "*"
@@ -220,7 +233,7 @@ func FindMessage(ctx context.Context, exec boil.ContextExecutor, iD int, selectC
 
 	q := queries.Raw(query, iD)
 
-	err := q.Bind(ctx, exec, messageObj)
+	err := q.Bind(nil, exec, messageObj)
 	if err != nil {
 		if errors.Cause(err) == sql.ErrNoRows {
 			return nil, sql.ErrNoRows
@@ -231,23 +244,26 @@ func FindMessage(ctx context.Context, exec boil.ContextExecutor, iD int, selectC
 	return messageObj, nil
 }
 
+// InsertG a single record. See Insert for whitelist behavior description.
+func (o *Message) InsertG(columns boil.Columns) error {
+	return o.Insert(boil.GetDB(), columns)
+}
+
 // Insert a single record using an executor.
 // See boil.Columns.InsertColumnSet documentation to understand column list inference for inserts.
-func (o *Message) Insert(ctx context.Context, exec boil.ContextExecutor, columns boil.Columns) error {
+func (o *Message) Insert(exec boil.Executor, columns boil.Columns) error {
 	if o == nil {
 		return errors.New("models: no messages provided for insertion")
 	}
 
 	var err error
-	if !boil.TimestampsAreSkipped(ctx) {
-		currTime := time.Now().In(boil.GetLocation())
+	currTime := time.Now().In(boil.GetLocation())
 
-		if o.CreatedAt.IsZero() {
-			o.CreatedAt = currTime
-		}
-		if queries.MustTime(o.UpdatedAt).IsZero() {
-			queries.SetScanner(&o.UpdatedAt, currTime)
-		}
+	if o.CreatedAt.IsZero() {
+		o.CreatedAt = currTime
+	}
+	if queries.MustTime(o.UpdatedAt).IsZero() {
+		queries.SetScanner(&o.UpdatedAt, currTime)
 	}
 
 	nzDefaults := queries.NonZeroDefaultSet(messageColumnsWithDefault, o)
@@ -291,16 +307,15 @@ func (o *Message) Insert(ctx context.Context, exec boil.ContextExecutor, columns
 	value := reflect.Indirect(reflect.ValueOf(o))
 	vals := queries.ValuesFromMapping(value, cache.valueMapping)
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, cache.query)
-		fmt.Fprintln(writer, vals)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, cache.query)
+		fmt.Fprintln(boil.DebugWriter, vals)
 	}
 
 	if len(cache.retMapping) != 0 {
-		err = exec.QueryRowContext(ctx, cache.query, vals...).Scan(queries.PtrsFromMapping(value, cache.retMapping)...)
+		err = exec.QueryRow(cache.query, vals...).Scan(queries.PtrsFromMapping(value, cache.retMapping)...)
 	} else {
-		_, err = exec.ExecContext(ctx, cache.query, vals...)
+		_, err = exec.Exec(cache.query, vals...)
 	}
 
 	if err != nil {
@@ -316,15 +331,19 @@ func (o *Message) Insert(ctx context.Context, exec boil.ContextExecutor, columns
 	return nil
 }
 
+// UpdateG a single Message record using the global executor.
+// See Update for more documentation.
+func (o *Message) UpdateG(columns boil.Columns) error {
+	return o.Update(boil.GetDB(), columns)
+}
+
 // Update uses an executor to update the Message.
 // See boil.Columns.UpdateColumnSet documentation to understand column list inference for updates.
 // Update does not automatically update the record in case of default values. Use .Reload() to refresh the records.
-func (o *Message) Update(ctx context.Context, exec boil.ContextExecutor, columns boil.Columns) error {
-	if !boil.TimestampsAreSkipped(ctx) {
-		currTime := time.Now().In(boil.GetLocation())
+func (o *Message) Update(exec boil.Executor, columns boil.Columns) error {
+	currTime := time.Now().In(boil.GetLocation())
 
-		queries.SetScanner(&o.UpdatedAt, currTime)
-	}
+	queries.SetScanner(&o.UpdatedAt, currTime)
 
 	var err error
 	key := makeCacheKey(columns, nil)
@@ -357,12 +376,11 @@ func (o *Message) Update(ctx context.Context, exec boil.ContextExecutor, columns
 
 	values := queries.ValuesFromMapping(reflect.Indirect(reflect.ValueOf(o)), cache.valueMapping)
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, cache.query)
-		fmt.Fprintln(writer, values)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, cache.query)
+		fmt.Fprintln(boil.DebugWriter, values)
 	}
-	_, err = exec.ExecContext(ctx, cache.query, values...)
+	_, err = exec.Exec(cache.query, values...)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to update messages row")
 	}
@@ -376,11 +394,16 @@ func (o *Message) Update(ctx context.Context, exec boil.ContextExecutor, columns
 	return nil
 }
 
+// UpdateAllG updates all rows with the specified column values.
+func (q messageQuery) UpdateAllG(cols M) error {
+	return q.UpdateAll(boil.GetDB(), cols)
+}
+
 // UpdateAll updates all rows with the specified column values.
-func (q messageQuery) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) error {
+func (q messageQuery) UpdateAll(exec boil.Executor, cols M) error {
 	queries.SetUpdate(q.Query, cols)
 
-	_, err := q.Query.ExecContext(ctx, exec)
+	_, err := q.Query.Exec(exec)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to update all for messages")
 	}
@@ -388,8 +411,13 @@ func (q messageQuery) UpdateAll(ctx context.Context, exec boil.ContextExecutor, 
 	return nil
 }
 
+// UpdateAllG updates all rows with the specified column values.
+func (o MessageSlice) UpdateAllG(cols M) error {
+	return o.UpdateAll(boil.GetDB(), cols)
+}
+
 // UpdateAll updates all rows with the specified column values, using an executor.
-func (o MessageSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, cols M) error {
+func (o MessageSlice) UpdateAll(exec boil.Executor, cols M) error {
 	ln := int64(len(o))
 	if ln == 0 {
 		return nil
@@ -419,12 +447,11 @@ func (o MessageSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, 
 		strmangle.SetParamNames("\"", "\"", 1, colNames),
 		strmangle.WhereClauseRepeated(string(dialect.LQ), string(dialect.RQ), len(colNames)+1, messagePrimaryKeyColumns, len(o)))
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, args...)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, sql)
+		fmt.Fprintln(boil.DebugWriter, args...)
 	}
-	_, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.Exec(sql, args...)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to update all in message slice")
 	}
@@ -432,20 +459,23 @@ func (o MessageSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, 
 	return nil
 }
 
+// UpsertG attempts an insert, and does an update or ignore on conflict.
+func (o *Message) UpsertG(updateOnConflict bool, conflictColumns []string, updateColumns, insertColumns boil.Columns) error {
+	return o.Upsert(boil.GetDB(), updateOnConflict, conflictColumns, updateColumns, insertColumns)
+}
+
 // Upsert attempts an insert using an executor, and does an update or ignore on conflict.
 // See boil.Columns documentation for how to properly use updateColumns and insertColumns.
-func (o *Message) Upsert(ctx context.Context, exec boil.ContextExecutor, updateOnConflict bool, conflictColumns []string, updateColumns, insertColumns boil.Columns) error {
+func (o *Message) Upsert(exec boil.Executor, updateOnConflict bool, conflictColumns []string, updateColumns, insertColumns boil.Columns) error {
 	if o == nil {
 		return errors.New("models: no messages provided for upsert")
 	}
-	if !boil.TimestampsAreSkipped(ctx) {
-		currTime := time.Now().In(boil.GetLocation())
+	currTime := time.Now().In(boil.GetLocation())
 
-		if o.CreatedAt.IsZero() {
-			o.CreatedAt = currTime
-		}
-		queries.SetScanner(&o.UpdatedAt, currTime)
+	if o.CreatedAt.IsZero() {
+		o.CreatedAt = currTime
 	}
+	queries.SetScanner(&o.UpdatedAt, currTime)
 
 	nzDefaults := queries.NonZeroDefaultSet(messageColumnsWithDefault, o)
 
@@ -525,18 +555,17 @@ func (o *Message) Upsert(ctx context.Context, exec boil.ContextExecutor, updateO
 		returns = queries.PtrsFromMapping(value, cache.retMapping)
 	}
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, cache.query)
-		fmt.Fprintln(writer, vals)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, cache.query)
+		fmt.Fprintln(boil.DebugWriter, vals)
 	}
 	if len(cache.retMapping) != 0 {
-		err = exec.QueryRowContext(ctx, cache.query, vals...).Scan(returns...)
+		err = exec.QueryRow(cache.query, vals...).Scan(returns...)
 		if err == sql.ErrNoRows {
 			err = nil // Postgres doesn't return anything when there's no update
 		}
 	} else {
-		_, err = exec.ExecContext(ctx, cache.query, vals...)
+		_, err = exec.Exec(cache.query, vals...)
 	}
 	if err != nil {
 		return errors.Wrap(err, "models: unable to upsert messages")
@@ -551,9 +580,15 @@ func (o *Message) Upsert(ctx context.Context, exec boil.ContextExecutor, updateO
 	return nil
 }
 
+// DeleteG deletes a single Message record.
+// DeleteG will match against the primary key column to find the record to delete.
+func (o *Message) DeleteG() error {
+	return o.Delete(boil.GetDB())
+}
+
 // Delete deletes a single Message record with an executor.
 // Delete will match against the primary key column to find the record to delete.
-func (o *Message) Delete(ctx context.Context, exec boil.ContextExecutor) error {
+func (o *Message) Delete(exec boil.Executor) error {
 	if o == nil {
 		return errors.New("models: no Message provided for delete")
 	}
@@ -561,12 +596,11 @@ func (o *Message) Delete(ctx context.Context, exec boil.ContextExecutor) error {
 	args := queries.ValuesFromMapping(reflect.Indirect(reflect.ValueOf(o)), messagePrimaryKeyMapping)
 	sql := "DELETE FROM \"messages\" WHERE \"id\"=$1"
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, args...)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, sql)
+		fmt.Fprintln(boil.DebugWriter, args...)
 	}
-	_, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.Exec(sql, args...)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to delete from messages")
 	}
@@ -575,14 +609,14 @@ func (o *Message) Delete(ctx context.Context, exec boil.ContextExecutor) error {
 }
 
 // DeleteAll deletes all matching rows.
-func (q messageQuery) DeleteAll(ctx context.Context, exec boil.ContextExecutor) error {
+func (q messageQuery) DeleteAll(exec boil.Executor) error {
 	if q.Query == nil {
 		return errors.New("models: no messageQuery provided for delete all")
 	}
 
 	queries.SetDelete(q.Query)
 
-	_, err := q.Query.ExecContext(ctx, exec)
+	_, err := q.Query.Exec(exec)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to delete all from messages")
 	}
@@ -590,8 +624,13 @@ func (q messageQuery) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 	return nil
 }
 
+// DeleteAllG deletes all rows in the slice.
+func (o MessageSlice) DeleteAllG() error {
+	return o.DeleteAll(boil.GetDB())
+}
+
 // DeleteAll deletes all rows in the slice, using an executor.
-func (o MessageSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) error {
+func (o MessageSlice) DeleteAll(exec boil.Executor) error {
 	if len(o) == 0 {
 		return nil
 	}
@@ -605,12 +644,11 @@ func (o MessageSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 	sql := "DELETE FROM \"messages\" WHERE " +
 		strmangle.WhereClauseRepeated(string(dialect.LQ), string(dialect.RQ), 1, messagePrimaryKeyColumns, len(o))
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, args)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, sql)
+		fmt.Fprintln(boil.DebugWriter, args)
 	}
-	_, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.Exec(sql, args...)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to delete all from message slice")
 	}
@@ -618,10 +656,19 @@ func (o MessageSlice) DeleteAll(ctx context.Context, exec boil.ContextExecutor) 
 	return nil
 }
 
+// ReloadG refetches the object from the database using the primary keys.
+func (o *Message) ReloadG() error {
+	if o == nil {
+		return errors.New("models: no Message provided for reload")
+	}
+
+	return o.Reload(boil.GetDB())
+}
+
 // Reload refetches the object from the database
 // using the primary keys with an executor.
-func (o *Message) Reload(ctx context.Context, exec boil.ContextExecutor) error {
-	ret, err := FindMessage(ctx, exec, o.ID)
+func (o *Message) Reload(exec boil.Executor) error {
+	ret, err := FindMessage(exec, o.ID)
 	if err != nil {
 		return err
 	}
@@ -630,9 +677,19 @@ func (o *Message) Reload(ctx context.Context, exec boil.ContextExecutor) error {
 	return nil
 }
 
+// ReloadAllG refetches every row with matching primary key column values
+// and overwrites the original object slice with the newly updated slice.
+func (o *MessageSlice) ReloadAllG() error {
+	if o == nil {
+		return errors.New("models: empty MessageSlice provided for reload all")
+	}
+
+	return o.ReloadAll(boil.GetDB())
+}
+
 // ReloadAll refetches every row with matching primary key column values
 // and overwrites the original object slice with the newly updated slice.
-func (o *MessageSlice) ReloadAll(ctx context.Context, exec boil.ContextExecutor) error {
+func (o *MessageSlice) ReloadAll(exec boil.Executor) error {
 	if o == nil || len(*o) == 0 {
 		return nil
 	}
@@ -649,7 +706,7 @@ func (o *MessageSlice) ReloadAll(ctx context.Context, exec boil.ContextExecutor)
 
 	q := queries.Raw(sql, args...)
 
-	err := q.Bind(ctx, exec, &slice)
+	err := q.Bind(nil, exec, &slice)
 	if err != nil {
 		return errors.Wrap(err, "models: unable to reload all in MessageSlice")
 	}
@@ -659,17 +716,21 @@ func (o *MessageSlice) ReloadAll(ctx context.Context, exec boil.ContextExecutor)
 	return nil
 }
 
+// MessageExistsG checks if the Message row exists.
+func MessageExistsG(iD int) (bool, error) {
+	return MessageExists(boil.GetDB(), iD)
+}
+
 // MessageExists checks if the Message row exists.
-func MessageExists(ctx context.Context, exec boil.ContextExecutor, iD int) (bool, error) {
+func MessageExists(exec boil.Executor, iD int) (bool, error) {
 	var exists bool
 	sql := "select exists(select 1 from \"messages\" where \"id\"=$1 limit 1)"
 
-	if boil.IsDebug(ctx) {
-		writer := boil.DebugWriterFrom(ctx)
-		fmt.Fprintln(writer, sql)
-		fmt.Fprintln(writer, iD)
+	if boil.DebugMode {
+		fmt.Fprintln(boil.DebugWriter, sql)
+		fmt.Fprintln(boil.DebugWriter, iD)
 	}
-	row := exec.QueryRowContext(ctx, sql, iD)
+	row := exec.QueryRow(sql, iD)
 
 	err := row.Scan(&exists)
 	if err != nil {
