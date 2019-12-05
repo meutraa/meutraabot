@@ -96,7 +96,7 @@ func handleCommand(db *data.Database, client *irc.Client, botname, channel, send
 	case "!metrics", "!metric":
 		return watchTimeHandler(db, channel, sender)
 	case "!code":
-		return fmt.Sprintf("%v lines of code", 460)
+		return fmt.Sprintf("%v lines of code", 464)
 	case "!restart":
 		return restartHandler(db, client, botname, sender)
 	case "!leave":
@@ -104,20 +104,21 @@ func handleCommand(db *data.Database, client *irc.Client, botname, channel, send
 	case "!join":
 		return joinHandler(db, client, botname, channel, sender)
 	case "!version":
-		return "1.5.0"
+		return "1.5.1"
 	case "!emoji":
 		return emojiHandler(db, channel, sender, text)
+	}
+	switch text {
 	case "hey", "hello", "howdy", "hi",
 		"hey!", "hello!", "howdy!", "hi!",
 		"hey.", "hello.", "howdy.", "hi.":
 		return randomGreeting() + " " + sender + "!"
 	}
+
 	if sender == botname {
 		return ""
 	}
-	if msg, valid := sleepHandler(sender, text); valid {
-		return msg
-	}
+
 	if msg, valid := backHandler(sender, text); valid {
 		return msg
 	}
@@ -130,6 +131,10 @@ func handleCommand(db *data.Database, client *irc.Client, botname, channel, send
 func vulpseHandler(db *data.Database, channel, sender, text string) (string, bool) {
 	if channel != "#vulpesmusketeer" {
 		return "", false
+	}
+
+	if msg, valid := sleepHandler(sender, text); valid {
+		return msg, true
 	}
 
 	if text == "h" {
@@ -258,7 +263,7 @@ func joinHandler(db *data.Database, client *irc.Client, botname, channel, sender
 	if err := client.SendMessage(ch.ChannelName, "Hi 🙋"); nil != err {
 		log.Println("Failed to send welcome message", err)
 	}
-	return "Bye bye 👋"
+	return ""
 }
 
 func leaveHandler(db *data.Database, client *irc.Client, botname, channel, sender string) string {
@@ -374,7 +379,9 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 	diff := time.Now().Sub(msg.ReceivedTime)
 	log.Printf("[%v ms] %v:%v:%v < %v\n", diff.Milliseconds(), msg.Channel, msg.Sender, msg.OriginalMessage, res)
 	if "" != res {
-		client.SendMessage(msg.Channel, res)
+		if err := client.SendMessage(msg.Channel, res); nil != err {
+			log.Println("Unable to send message", err)
+		}
 	}
 }
 
