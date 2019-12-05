@@ -104,7 +104,7 @@ func handleCommand(db *data.Database, client *irc.Client, botname, channel, send
 	case "!join":
 		return joinHandler(db, client, botname, channel, sender)
 	case "!version":
-		return "1.5.1"
+		return "1.5.2"
 	case "!emoji":
 		return emojiHandler(db, channel, sender, text)
 	}
@@ -325,9 +325,11 @@ func restartHandler(db *data.Database, client *irc.Client, botname, sender strin
 
 func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessage, botname string) {
 	// Insert a user if they do not exist
+	textColor := null.String{String: randomColor(), Valid: true}
 	u := models.User{
 		ChannelName: msg.Channel,
 		Sender:      msg.Sender,
+		TextColor:   textColor,
 	}
 	if err := u.Upsert(db.Context, db.DB, false, nil, boil.Whitelist(), boil.Infer()); nil != err {
 		log.Println("Unable to upsert user:", err)
@@ -356,6 +358,9 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 		// Update user metrics
 		user.MessageCount += 1
 		user.WordCount += int64(len(strings.Split(msg.Message, " ")))
+		if "" == user.TextColor.String {
+			user.TextColor = textColor
+		}
 
 		now := time.Now()
 		if user.UpdatedAt.Valid {
@@ -368,6 +373,7 @@ func handleMessage(client *irc.Client, db *data.Database, msg *irc.PrivateMessag
 		if err := user.Update(db.Context, db.DB, boil.Whitelist(
 			models.UserColumns.WatchTime,
 			models.UserColumns.MessageCount,
+			models.UserColumns.TextColor,
 			models.UserColumns.UpdatedAt,
 			models.UserColumns.WordCount,
 		)); nil != err {
@@ -389,6 +395,12 @@ func randomGreeting() string {
 	return [...]string{
 		"Hello", "Howdy", "Salutations", "Greetings", "Hi", "Welcome", "Good day", "Hey",
 	}[rand.Intn(7)]
+}
+
+func randomColor() string {
+	return [...]string{
+		"#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea",
+	}[rand.Intn(5)]
 }
 
 // Function to cleanup database and irc client before closing

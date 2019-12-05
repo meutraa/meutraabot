@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"html/template"
 	"log"
 	"net/http"
@@ -17,68 +18,46 @@ const chatTemplateString = `<!DOCTYPE html>
     <title>Chat</title>
     <meta http-equiv="refresh" content="5">
     <style>
-      td, th {
+      .name {
+        font-weight: bold;
+      }
+      span {
+        font-size: 22px;
         color: rgb(255, 255, 255);
-        font-family: Helvetica, sans-serif;
-        font-size: 3vw;
-        vertical-align: top;
-        border: none;
-      }
-      td {
-        padding: 0;
-      }
-      th {
-	    font-weight: normal;
-        white-space: nowrap;
-        padding: 6px 24px;
-        background-color: rgba(0, 0, 0, 0.2);
-        border-radius: 1em 0em 0em 1em;
-      }
-      .msg {
-	    vertical-align: middle;
-	    min-height: 33px;
-        background-color: rgba(0, 0, 0, 0.2);
-        border-radius: 0em 1em 1em 0em;
-        padding: 6px 24px;
-        display: inline-block;
+        font-family: Noto Sans, Helvetica, sans-serif;
       }
       html {
         overflow: hidden;
       }
-      table {
-        border-collapse: seperate;
-        border-style: hidden;
-        border-spacing: 0 8px;
-        width: 100%;
-        position: relative;
-        bottom: 0;
+      div {
+        border-radius: 1em;
+        margin: 4px;
+        padding: 6px 16px;
+        display: inline-block;
+        background-color: rgba(0, 0, 0, 0.2);
       }
     </style>
   </head>
-  <body>
-    <table>{{range .Messages}}
-      <tr style="opacity: {{ .Opacity }};">
-        <th>{{ .Name }}</th>
-        <td><div class="msg">{{ .Message }}</div></td>
-      </tr>{{end}}
-    </table>
-    <script type='text/javascript'>
-      window.scrollTo(0, document.body.scrollHeight);
-    </script>
+  <body>{{range .Messages}}
+		<div style="opacity: {{ .Opacity }};">
+      <span class="name" style="color:{{ .TextColor }}">{{ .Name }}</span><br>
+      <span>{{ .Message }}</span>
+    </div>{{end}}
   </body>
 </html>
 `
 
 type ChatMessage struct {
-	Name    template.HTML
-	Opacity float64
-	Message string
+	Name      string
+	Opacity   float64
+	Message   string
+	TextColor string
 }
 
-func getUserString(i int, hasDef bool, user *data.UserMetric) string {
+func getUserString(i int, hasDef bool, sender, emoji string) string {
 	str := ""
-	if "" != user.Emoji {
-		str += user.Emoji + " "
+	if "" != emoji {
+		str += emoji + " "
 	} else if hasDef {
 		if i == 0 {
 			str += "🏆 "
@@ -90,18 +69,24 @@ func getUserString(i int, hasDef bool, user *data.UserMetric) string {
 	} else {
 		str += "  "
 	}
-
-	if "" != user.TextColor {
-		str += "<font color=\"" + user.TextColor + "\">" + user.Sender + "</font>"
-	} else {
-		str += user.Sender
-	}
-	return str
+	return str + sender
 }
 
 func handleChatRequest(c *gin.Context, db *data.Database, t *template.Template) {
 	channel := "#" + c.Param("user")
-	messages, err := db.Messages(channel, 10)
+	fontSize := c.Param("fontSize")
+
+	rows, err := db.DB.QueryContext(db.Context,
+		"SELECT messages.message, messages.sender, users.emoji, users.text_color "+
+			"FROM messages "+
+			"INNER JOIN users ON "+
+			"messages.sender = users.sender AND "+
+			"messages.channel_name = users.channel_name "+
+			"WHERE messages.channel_name = $1 "+
+			"ORDER BY messages.created_at DESC "+
+			"LIMIT 8", channel,
+	)
+
 	if nil != err {
 		log.Println(err.Error())
 		c.String(http.StatusBadRequest, "dummy")
@@ -109,25 +94,42 @@ func handleChatRequest(c *gin.Context, db *data.Database, t *template.Template) 
 	}
 
 	var chatMessages []ChatMessage
-	count := float64(len(messages))
-	for i := len(messages) - 1; i >= 0; i-- {
-		message := messages[i]
-		opacity := 1.0
-		if i > 4 {
-			opacity = (1.0 - float64(i-4)/(count-4))
+	for rows.Next() {
+		var message, sender string
+		var emoji, textColor sql.NullString
+		if err := rows.Scan(&message, &sender, &emoji, &textColor); nil != err {
+			log.Println("Unable to scan message row", err)
+			continue
+		}
+
+		color := "#ffffff"
+		if "" != textColor.String {
+			color = textColor.String
 		}
 		chatMessages = append(chatMessages,
 			ChatMessage{
-				template.HTML(getUserString(i, false, &(message.User))),
-				opacity,
-				message.Message,
+				getUserString(0, false, sender, emoji.String),
+				0.0,
+				message,
+				color,
 			})
+	}
+
+	count := len(chatMessages)
+	for i := 0; i < count; i++ {
+		opacity := 1.0
+		if i > 4 {
+			opacity = (1.0 - float64(i-4)/float64(count-4))
+		}
+		chatMessages[i].Opacity = opacity
 	}
 
 	data := struct {
 		Messages []ChatMessage
+		FontSize string
 	}{
 		Messages: chatMessages,
+		FontSize: fontSize,
 	}
 
 	var out bytes.Buffer

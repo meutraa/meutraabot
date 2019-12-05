@@ -40,6 +40,6 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.GET("/leaderboard/:user", func(c *gin.Context) { handleLeaderboardRequest(c, db, t) })
-	r.GET("/chat/:user", func(c *gin.Context) { handleChatRequest(c, db, ct) })
+	r.GET("/chat/:user/:fontSize", func(c *gin.Context) { handleChatRequest(c, db, ct) })
 	r.Run(listenAddress)
 }
