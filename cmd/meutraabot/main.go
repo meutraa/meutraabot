@@ -173,8 +173,14 @@ func handleCommand(channel, sender, text string) string {
 			metrics.MessageCount,
 			metrics.WordCount,
 		)
+	case "!rank":
+		rank, err := q.GetWatchTimeRank(c, mdb.GetWatchTimeRankParams{channel, sender})
+		if nil != err {
+			log.Println(err)
+		}
+		return fmt.Sprintf("%v is #%v", sender, rank)
 	case "!code":
-		return fmt.Sprintf("%v lines of code", 295)
+		return fmt.Sprintf("%v lines of code", 316)
 	case "!join": // A user can request meutbot join from any channel
 		cn := "#" + sender
 
@@ -187,12 +193,28 @@ func handleCommand(channel, sender, text string) string {
 		irc.Privmsg(cn, "Hi 🙋")
 		return ""
 	case "!version":
-		return "1.7.0"
+		return "1.9.0"
 	}
 
-	switch strings.SplitN(text, " ", 2)[0] {
+	strs := strings.SplitN(text, " ", 2)
+	switch strs[0] {
 	case "!emoji":
 		return emojiHandler(c, channel, sender, text)
+	case "!top":
+		var count int32 = 5
+		if len(strs) > 1 && strs[1] != "" {
+			cnt, err := strconv.ParseInt(strs[1], 10, 32)
+			if nil == err {
+				count = int32(cnt)
+			}
+		}
+		top, err := q.GetTopWatchers(c, mdb.GetTopWatchersParams{channel, count})
+		if nil != err {
+			log.Println("unable to get top watchers", err)
+			return ""
+		}
+
+		return strings.Join(top, ", ")
 	}
 
 	if msg, valid := vulpseHandler(c, channel, sender, text); valid {

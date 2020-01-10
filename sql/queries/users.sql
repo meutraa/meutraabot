@@ -1,11 +1,23 @@
 -- name: GetWatchTimeRank :one
-SELECT CAST(RANK () OVER (
-    PARTITION BY channel_name
-    ORDER BY watch_time DESC
-  ) AS INTEGER)
+SELECT
+  cast(rank AS INTEGER)
+  FROM
+    (SELECT
+      RANK() OVER (ORDER BY watch_time DESC) AS rank,
+      sender
+      FROM users
+      WHERE channel_name = $1
+  ) AS ss
+  WHERE sender = $2;
+
+-- name: GetTopWatchers :many
+SELECT
+  sender
   FROM users
   WHERE channel_name = $1
-  AND sender = $2;
+  ORDER BY watch_time DESC
+  LIMIT $2;
+
 
 -- name: UpdateEmoji :exec
 UPDATE users

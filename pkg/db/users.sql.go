@@ -54,14 +54,54 @@ func (q *Queries) GetMetrics(ctx context.Context, arg GetMetricsParams) (GetMetr
 	return i, err
 }
 
-const getWatchTimeRank = `-- name: GetWatchTimeRank :one
-SELECT CAST(RANK () OVER (
-    PARTITION BY channel_name
-    ORDER BY watch_time DESC
-  ) AS INTEGER)
+const getTopWatchers = `-- name: GetTopWatchers :many
+SELECT
+  sender
   FROM users
   WHERE channel_name = $1
-  AND sender = $2
+  ORDER BY watch_time DESC
+  LIMIT $2
+`
+
+type GetTopWatchersParams struct {
+	ChannelName string
+	Limit       int32
+}
+
+func (q *Queries) GetTopWatchers(ctx context.Context, arg GetTopWatchersParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getTopWatchers, arg.ChannelName, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var sender string
+		if err := rows.Scan(&sender); err != nil {
+			return nil, err
+		}
+		items = append(items, sender)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getWatchTimeRank = `-- name: GetWatchTimeRank :one
+SELECT
+  cast(rank AS INTEGER)
+  FROM
+    (SELECT
+      RANK() OVER (ORDER BY watch_time DESC) AS rank,
+      sender
+      FROM users
+      WHERE channel_name = $1
+  ) AS ss
+  WHERE sender = $2
 `
 
 type GetWatchTimeRankParams struct {
@@ -71,9 +111,9 @@ type GetWatchTimeRankParams struct {
 
 func (q *Queries) GetWatchTimeRank(ctx context.Context, arg GetWatchTimeRankParams) (int32, error) {
 	row := q.db.QueryRowContext(ctx, getWatchTimeRank, arg.ChannelName, arg.Sender)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
+	var rank int32
+	err := row.Scan(&rank)
+	return rank, err
 }
 
 const updateEmoji = `-- name: UpdateEmoji :exec
