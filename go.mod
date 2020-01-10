@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/websocket v1.4.1
 	github.com/jinzhu/gorm v1.9.11
 	github.com/kat-co/vala v0.0.0-20170210184112-42e1d8b61f12
+	github.com/kyleconroy/sqlc v0.1.0 // indirect
 	github.com/lib/pq v1.1.1
 	github.com/pkg/errors v0.8.1
 	github.com/spf13/viper v1.5.0

@@ -1,0 +1,13 @@
+{
+  "version": "1",
+  "packages": [
+      {
+      "name": "mdb",
+      "emit_json_tags": false,
+      "emit_prepared_queries": false,
+      "path": "pkg/db",
+      "queries": "sql/queries/",
+      "schema": "sql/schema.sql"
+    }
+  ]
+}

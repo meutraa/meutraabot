@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -15,10 +16,7 @@ import (
 
 	_ "github.com/lib/pq"
 	ircevent "github.com/thoj/go-ircevent"
-	"github.com/volatiletech/null"
-	"github.com/volatiletech/sqlboiler/boil"
-	. "github.com/volatiletech/sqlboiler/queries/qm"
-	"gitlab.com/meutraa/meutraabot/pkg/models"
+	mdb "gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
 var irc *ircevent.Connection
@@ -39,6 +37,9 @@ func complain(err error) {
 	}
 }
 
+var q *(mdb.Queries)
+var ctx = context.Background()
+
 func main() {
 	// Read our username from the environment, end if failure
 	username = os.Getenv("TWITCH_USERNAME")
@@ -51,18 +52,23 @@ func main() {
 	}
 
 	// Create a connection to our database, end if failure
-	if db, err := sql.Open("postgres", connString); nil != err {
+	db, err := sql.Open("postgres", connString)
+	if nil != err {
 		log.Println("unable to establish connection to database", err)
 		return
-	} else {
-		// boil.DebugMode = true
-		boil.SetDB(db)
-		defer func() {
-			if err := db.Close(); nil != err {
-				log.Println("Unable to close database connection:", err)
-			}
-		}()
 	}
+	if db.Ping() != nil {
+		log.Println("unable to ping database", err)
+		return
+	}
+
+	defer func() {
+		if err := db.Close(); nil != err {
+			log.Println("unable to close database connection:", err)
+		}
+	}()
+
+	q = mdb.New(db)
 
 	// Create a channel for the OS to notify us of interrupts/signals
 	interrupt := make(chan os.Signal, 1)
@@ -80,13 +86,15 @@ func main() {
 	irc.AddCallback("001", func(e *ircevent.Event) {
 		irc.Join("#" + username)
 		// Get a list of all our channel
-		if channels, err := models.Channels().AllG(); nil != err {
+		c, cancel := context.WithTimeout(ctx, time.Second*5)
+		channels, err := q.GetChannelNames(c)
+		cancel()
+		if nil != err {
 			log.Println(err)
-		} else {
-			// Try to join all channels in our channel table
-			for _, channel := range channels {
-				irc.Join(channel.ChannelName)
-			}
+		}
+		// Try to join all channels in our channel table
+		for _, channel := range channels {
+			irc.Join(channel)
 		}
 	})
 	irc.AddCallback("PRIVMSG", func(e *ircevent.Event) {
@@ -118,6 +126,9 @@ func main() {
 }
 
 func handleCommand(channel, sender, text string) string {
+	c, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
 	if username == sender { // This is the bot sending a message
 		if text == "!restart" {
 			go func() {
@@ -132,7 +143,7 @@ func handleCommand(channel, sender, text string) string {
 	}
 	if "#"+sender == channel { // This is the channel owner
 		if text == "!leave" {
-			if err := (&models.Channel{ChannelName: channel}).DeleteG(); nil != err {
+			if err := q.DeleteChannel(c, channel); nil != err {
 				return "Failed to leave channel"
 			}
 
@@ -147,28 +158,52 @@ func handleCommand(channel, sender, text string) string {
 	case "hey", "hello", "howdy", "hi",
 		"hey!", "hello!", "howdy!", "hi!",
 		"hey.", "hello.", "howdy.", "hi.":
+		if channel == "#hellokiwii" {
+			return ""
+		}
 		return greetings[rand.Intn(len(greetings)-1)] + " " + sender + "!"
 	case "!metrics", "!metric":
-		return watchTimeHandler(channel, sender)
+		metrics, err := q.GetMetrics(c, mdb.GetMetricsParams{channel, sender})
+		if nil != err {
+			log.Println("unable to lookup user for metrics", err)
+			return ""
+		}
+		return fmt.Sprintf("%v active time, %v messages, %v words",
+			time.Duration(metrics.WatchTime*1000000000),
+			metrics.MessageCount,
+			metrics.WordCount,
+		)
 	case "!code":
-		return fmt.Sprintf("%v lines of code", 297)
+		return fmt.Sprintf("%v lines of code", 295)
 	case "!join": // A user can request meutbot join from any channel
-		ch := models.Channel{ChannelName: "#" + sender}
-		if err := ch.UpsertG(false, nil, boil.Whitelist(), boil.Infer()); nil != err {
+		cn := "#" + sender
+
+		if err := q.CreateChannel(c, cn); nil != err {
 			log.Println("Unable to insert channel:", err)
 			return ""
 		}
 
-		irc.Join(ch.ChannelName)
-		irc.Privmsg(ch.ChannelName, "Hi 🙋")
+		irc.Join(cn)
+		irc.Privmsg(cn, "Hi 🙋")
 		return ""
 	case "!version":
-		return "1.6.3"
+		return "1.7.0"
 	}
 
 	switch strings.SplitN(text, " ", 2)[0] {
 	case "!emoji":
-		return emojiHandler(channel, sender, text)
+		return emojiHandler(c, channel, sender, text)
+	}
+
+	if msg, valid := vulpseHandler(c, channel, sender, text); valid {
+		return msg
+	}
+	return ""
+}
+
+func vulpseHandler(c context.Context, channel, sender, text string) (string, bool) {
+	if channel != "#vulpesmusketeer" {
+		return "", false
 	}
 
 	// I'm back functionality
@@ -176,17 +211,7 @@ func handleCommand(channel, sender, text string) string {
 		strings.HasPrefix(text, "i am back") ||
 		text == "back" ||
 		strings.HasPrefix(text, "im back") {
-		return "Hi back, I thought your name was " + sender + " 🤔."
-	}
-	if msg, valid := vulpseHandler(channel, sender, text); valid {
-		return msg
-	}
-	return ""
-}
-
-func vulpseHandler(channel, sender, text string) (string, bool) {
-	if channel != "#vulpesmusketeer" {
-		return "", false
+		return "Hi back, I thought your name was " + sender + " 🤔.", true
 	}
 
 	if (strings.HasPrefix(text, "😴") ||
@@ -197,16 +222,10 @@ func vulpseHandler(channel, sender, text string) (string, bool) {
 	}
 
 	if text == "h" {
-		channel, err := models.FindChannelG(channel)
-		if nil != err {
-			log.Println("Unable to find channel", err)
-			return "", true
-		}
-
-		channel.HiccupCount += 1
-
-		err = channel.UpdateG(boil.Whitelist(models.ChannelColumns.HiccupCount))
-		if nil != err {
+		if err := q.UpdateHiccupCount(c, mdb.UpdateHiccupCountParams{
+			ChannelName: channel,
+			HiccupCount: 1,
+		}); nil != err {
 			log.Println("Unable to update hiccup_count", err)
 		}
 		return "", true
@@ -224,28 +243,29 @@ func vulpseHandler(channel, sender, text string) (string, bool) {
 				return "Unable to parse count!: " + err.Error(), true
 			}
 
-			if channel, err := models.FindChannelG(channel); nil != err {
-				log.Println("Unable to find channel", err)
-			} else {
-				channel.HiccupCount += count
-				complain(channel.UpdateG(boil.Whitelist(models.ChannelColumns.HiccupCount)))
+			if err := q.UpdateHiccupCount(c, mdb.UpdateHiccupCountParams{
+				ChannelName: channel,
+				HiccupCount: count,
+			}); nil != err {
+				log.Println("Unable to update hiccup_count", err)
 			}
+
 			return "", true
 		}
 	}
 
 	if strings.HasPrefix(text, "!hiccups") {
-		channel, err := models.FindChannelG(channel)
+		count, err := q.GetHiccupCount(c, channel)
 		if nil != err {
-			log.Println("Unable to find channel", err)
+			log.Println("unable to find channel", err)
 			return "", true
 		}
-		return fmt.Sprintf("Casweets has hiccuped %v times!", channel.HiccupCount), true
+		return fmt.Sprintf("Casweets has hiccuped %v times!", count), true
 	}
 	return "", false
 }
 
-func emojiHandler(channel, sender, text string) string {
+func emojiHandler(c context.Context, channel, sender, text string) string {
 	parts := strings.Split(text, " ")
 	if len(parts) != 2 {
 		return ""
@@ -258,87 +278,60 @@ func emojiHandler(channel, sender, text string) string {
 		return ""
 	}
 
-	topUsers, err := models.Users(
-		models.UserWhere.ChannelName.EQ(channel),
-		OrderBy(models.UserColumns.WatchTime+" DESC"),
-		Limit(3),
-	).AllG()
+	rank, err := q.GetWatchTimeRank(c, mdb.GetWatchTimeRankParams{
+		ChannelName: channel,
+		Sender:      sender,
+	})
 	if nil != err {
-		log.Println("Unable to get top 3 users", err)
-		return ""
+		log.Println("unable to get user watch time rank", err)
 	}
-
-	// Check user is in top 3
-	var user *models.User
-	for _, u := range topUsers {
-		if u.Sender == sender {
-			user = u
-			break
-		}
-	}
-	if nil == user {
+	if rank > 3 {
 		return "Must be in top 3 of leaderboard to use this command"
 	}
 
-	user.Emoji = null.String{String: string(rune), Valid: true}
-	complain(user.UpdateG(boil.Whitelist(models.UserColumns.Emoji)))
+	c2, cancel := context.WithTimeout(ctx, time.Second*5)
+	if err := q.UpdateEmoji(c2, mdb.UpdateEmojiParams{
+		ChannelName: channel,
+		Sender:      sender,
+		Emoji:       sql.NullString{String: string(rune), Valid: true},
+	}); nil != err {
+		log.Println("unable to update emoji", err)
+		return ""
+	}
+	cancel()
 	return ""
 }
 
-func watchTimeHandler(channel, sender string) string {
-	if user, err := models.Users(
-		Where(
-			models.UserColumns.ChannelName+" = ? AND "+models.UserColumns.Sender+" = ?",
-			channel, sender),
-	).OneG(); nil != err {
-		log.Println("Unable to lookup user for watch_time", err)
-		return ""
-	} else {
-		return fmt.Sprintf("%v active time, %v messages, %v words",
-			time.Duration(user.WatchTime*1000000000),
-			user.MessageCount,
-			user.WordCount)
-	}
-}
-
 func handleMessage(e *ircevent.Event, channel string) {
-	// Insert a user if they do not exist
-	complain((&models.User{
+	c, cancel := context.WithTimeout(ctx, time.Second*5)
+	if err := q.CreateUser(c, mdb.CreateUserParams{
 		ChannelName: channel,
 		Sender:      e.Nick,
-	}).UpsertG(false, nil, boil.Whitelist(), boil.Infer()))
+		TextColor:   sql.NullString{String: colors[rand.Intn(len(colors)-1)], Valid: true},
+	}); nil != err {
+		log.Println("unable to create user", err)
+	}
+	cancel()
 
-	// Save message
-	complain((&models.Message{
+	c, cancel = context.WithTimeout(ctx, time.Second*5)
+	if err := q.UpdateMetrics(c, mdb.UpdateMetricsParams{
+		ChannelName: channel,
+		Sender:      e.Nick,
+		WordCount:   int64(len(strings.Split(e.Message(), " "))),
+	}); nil != err {
+		log.Println("unable to update metrics for user", err)
+	}
+	cancel()
+
+	c, cancel = context.WithTimeout(ctx, time.Second*5)
+	if err := q.CreateMessage(c, mdb.CreateMessageParams{
 		ChannelName: channel,
 		Sender:      e.Nick,
 		Message:     e.Message(),
-	}).InsertG(boil.Infer()))
-
-	// Get the user to update stats
-	if user, err := models.Users(
-		Where(
-			models.UserColumns.ChannelName+" = ? AND "+models.UserColumns.Sender+" = ?",
-			channel, e.Nick),
-	).OneG(); nil != err {
-		log.Println("Unable to find user to update metrics", err)
-	} else {
-		// Update user metrics
-		user.MessageCount += 1
-		user.WordCount += int64(len(strings.Split(e.Message(), " ")))
-		if "" == user.TextColor.String {
-			user.TextColor = null.String{String: colors[rand.Intn(len(colors)-1)], Valid: true}
-		}
-
-		if user.UpdatedAt.Valid {
-			diff := time.Now().Sub(user.UpdatedAt.Time)
-			if diff.Seconds() < float64(activeInterval) {
-				user.WatchTime += int64(diff.Seconds())
-			}
-		}
-
-		complain(user.UpdateG(boil.Infer()))
+	}); nil != err {
+		log.Println("unable to add message", err)
 	}
+	cancel()
 
 	res := handleCommand(channel, e.Nick, strings.ToLower(e.Message()))
 	log.Printf("%v:%v:%v < %v\n", channel, e.Nick, e.Message(), res)
