@@ -16,6 +16,8 @@ import (
 type Data struct {
 	User    string
 	Channel string
+	IsMod   bool
+	IsSub   bool
 	BotName string
 	Arg     []string
 }

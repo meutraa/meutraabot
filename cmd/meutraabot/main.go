@@ -103,6 +103,8 @@ func main() {
 		return
 	}
 
+	irc.SendRaw("CAP REQ :twitch.tv/tags")
+
 	done := make(chan bool, 1)
 	go func() {
 		irc.Loop()
@@ -121,7 +123,12 @@ func main() {
 	}
 }
 
-func handleCommand(channel, sender, text string) string {
+func handleCommand(channel string, e *ircevent.Event) string {
+	sender := e.Nick
+	text := e.Message()
+	isMod := e.Tags["mod"] == "1"
+	isSub := e.Tags["subscriber"] == "1"
+
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
@@ -178,7 +185,7 @@ func handleCommand(channel, sender, text string) string {
 			return strings.Join(commands, ", ")
 		}
 
-		if "#"+sender == channel || sender == "meutraa" {
+		if isMod {
 			if strs[0] == "show" {
 				if len(strs) == 1 {
 					return "!cmd show command"
@@ -235,7 +242,7 @@ func handleCommand(channel, sender, text string) string {
 
 	var tmplStr string
 	var command = strings.ToLower(strs[0])
-	if command == "!test" && ("#"+sender == channel || sender == "meutraa") {
+	if command == "!test" && isMod {
 		tmplStr = strs[1]
 	} else {
 		var err error
@@ -256,6 +263,8 @@ func handleCommand(channel, sender, text string) string {
 	variables := strings.Split(text, " ")[1:]
 	data := Data{
 		Channel: strings.TrimPrefix(channel, "#"),
+		IsMod:   isMod,
+		IsSub:   isSub,
 		User:    sender,
 		BotName: username,
 		Arg:     variables,
@@ -364,9 +373,12 @@ func handleMessage(e *ircevent.Event, channel string) {
 	}
 	cancel()
 
-	res := handleCommand(channel, e.Nick, e.Message())
+	res := handleCommand(channel, e)
 	log.Printf("%v:%v:%v < %v\n", channel, e.Nick, e.Message(), res)
 	if "" != res {
-		irc.Privmsg(channel, res)
+		if strings.HasPrefix(e.Message(), "!") || strings.HasPrefix(e.Message(), "h") {
+			irc.Privmsg(channel, "/delete "+e.Tags["id"])
+		}
+		irc.Privmsg(channel, "/me "+res)
 	}
 }
