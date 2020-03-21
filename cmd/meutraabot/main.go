@@ -1,30 +1,27 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"math/rand"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
+	"text/template"
 	"time"
 	"unicode/utf8"
 
 	_ "github.com/lib/pq"
 	ircevent "github.com/thoj/go-ircevent"
-	mdb "gitlab.com/meutraa/meutraabot/pkg/db"
+	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
 var irc *ircevent.Connection
-var username string
-var greetings = [...]string{
-	"Hello", "Howdy", "Salutations", "Greetings",
-	"Hi", "Welcome", "Good day", "Hey",
-}
+var username = os.Getenv("TWITCH_USERNAME")
+
 var colors = [...]string{
 	"#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea",
 }
@@ -37,12 +34,11 @@ func complain(err error) {
 	}
 }
 
-var q *(mdb.Queries)
+var q *(db.Queries)
 var ctx = context.Background()
 
 func main() {
 	// Read our username from the environment, end if failure
-	username = os.Getenv("TWITCH_USERNAME")
 	oauth := os.Getenv("TWITCH_OAUTH_TOKEN")
 	connString := os.Getenv("POSTGRES_CONNECTION_STRING")
 
@@ -52,23 +48,23 @@ func main() {
 	}
 
 	// Create a connection to our database, end if failure
-	db, err := sql.Open("postgres", connString)
+	conn, err := sql.Open("postgres", connString)
 	if nil != err {
 		log.Println("unable to establish connection to database", err)
 		return
 	}
-	if db.Ping() != nil {
+	if conn.Ping() != nil {
 		log.Println("unable to ping database", err)
 		return
 	}
 
 	defer func() {
-		if err := db.Close(); nil != err {
+		if err := conn.Close(); nil != err {
 			log.Println("unable to close database connection:", err)
 		}
 	}()
 
-	q = mdb.New(db)
+	q = db.New(conn)
 
 	// Create a channel for the OS to notify us of interrupts/signals
 	interrupt := make(chan os.Signal, 1)
@@ -154,137 +150,150 @@ func handleCommand(channel, sender, text string) string {
 			return "Bye bye 👋"
 		}
 	}
-	switch text {
-	case "hey", "hello", "howdy", "hi",
-		"hey!", "hello!", "howdy!", "hi!",
-		"hey.", "hello.", "howdy.", "hi.":
-		if channel == "#hellokiwii" {
-			return ""
-		}
-		return greetings[rand.Intn(len(greetings)-1)] + " " + sender + "!"
-	case "!metrics", "!metric":
-		metrics, err := q.GetMetrics(c, mdb.GetMetricsParams{channel, sender})
-		if nil != err {
-			log.Println("unable to lookup user for metrics", err)
-			return ""
-		}
-		return fmt.Sprintf("%v active time, %v messages, %v words",
-			time.Duration(metrics.WatchTime*1000000000),
-			metrics.MessageCount,
-			metrics.WordCount,
-		)
-	case "!rank":
-		rank, err := q.GetWatchTimeRank(c, mdb.GetWatchTimeRankParams{channel, sender})
-		if nil != err {
-			log.Println(err)
-		}
-		return fmt.Sprintf("%v is #%v", sender, rank)
-	case "!code":
-		return fmt.Sprintf("%v lines of code", 316)
-	case "!join": // A user can request meutbot join from any channel
-		cn := "#" + sender
 
-		if err := q.CreateChannel(c, cn); nil != err {
+	if text == "!join" {
+		if err := q.CreateChannel(c, "#"+sender); nil != err {
 			log.Println("Unable to insert channel:", err)
 			return ""
 		}
 
-		irc.Join(cn)
-		irc.Privmsg(cn, "Hi 🙋")
+		irc.Join("#" + sender)
+		irc.Privmsg("#"+sender, "Hi 🙋")
 		return ""
-	case "!version":
-		return "1.9.0"
 	}
 
 	strs := strings.SplitN(text, " ", 2)
-	switch strs[0] {
-	case "!emoji":
-		return emojiHandler(c, channel, sender, text)
-	case "!top":
-		var count int32 = 5
-		if len(strs) > 1 && strs[1] != "" {
-			cnt, err := strconv.ParseInt(strs[1], 10, 32)
-			if nil == err {
-				count = int32(cnt)
+
+	if strs[0] == "!cmd" {
+		if len(strs) == 1 {
+			return "!cmd set|list"
+		}
+
+		strs = strings.SplitN(strs[1], " ", 2)
+		if strs[0] == "list" {
+			commands, err := q.GetCommands(c, channel)
+			if nil != err {
+				log.Println("unable to get commands", channel, err)
+			}
+			return strings.Join(commands, ", ")
+		}
+
+		if "#"+sender == channel || sender == "meutraa" {
+			if strs[0] == "show" {
+				if len(strs) == 1 {
+					return "!cmd show command"
+				}
+				tmpl, err := q.GetCommand(c, db.GetCommandParams{
+					ChannelName: channel,
+					Name:        strs[1],
+				})
+				if nil != err {
+					log.Println("unable to get command", channel, strs[1], err)
+				}
+				return tmpl
+			}
+
+			if strs[0] == "set" {
+				if len(strs) == 1 {
+					return "!cmd set command template"
+				}
+
+				strs = strings.SplitN(strs[1], " ", 2)
+				tmpl := ""
+				if len(strs) > 1 {
+					tmpl = strs[1]
+				}
+
+				names := strings.Split(strs[0], ",")
+				for _, name := range names {
+					// Lowercase this for sanity
+					name = strings.ToLower(name)
+
+					if tmpl == "" {
+						if err := q.DeleteCommand(c, db.DeleteCommandParams{
+							ChannelName: channel,
+							Name:        name,
+						}); nil != err {
+							log.Println("unable to delete command", name, err)
+							break
+						}
+						continue
+					}
+					if err := q.SetCommand(c, db.SetCommandParams{
+						ChannelName: channel,
+						Name:        name,
+						Template:    tmpl,
+					}); nil != err {
+						log.Println("unable to set command", name, tmpl, err)
+						break
+					}
+				}
+				return ""
 			}
 		}
-		top, err := q.GetTopWatchers(c, mdb.GetTopWatchersParams{channel, count})
-		if nil != err {
-			log.Println("unable to get top watchers", err)
+	}
+
+	var tmplStr string
+	var command = strings.ToLower(strs[0])
+	if command == "!test" && ("#"+sender == channel || sender == "meutraa") {
+		tmplStr = strs[1]
+	} else {
+		var err error
+		tmplStr, err = q.GetCommand(c, db.GetCommandParams{
+			ChannelName: channel,
+			Name:        command,
+		})
+		if nil != err && err != sql.ErrNoRows {
+			log.Println("unable to query command", err)
 			return ""
 		}
-
-		return strings.Join(top, ", ")
 	}
 
-	if msg, valid := vulpseHandler(c, channel, sender, text); valid {
-		return msg
-	}
-	return ""
-}
-
-func vulpseHandler(c context.Context, channel, sender, text string) (string, bool) {
-	if channel != "#vulpesmusketeer" {
-		return "", false
+	if tmplStr == "" {
+		return ""
 	}
 
-	// I'm back functionality
-	if strings.HasPrefix(text, "i'm back") ||
-		strings.HasPrefix(text, "i am back") ||
-		text == "back" ||
-		strings.HasPrefix(text, "im back") {
-		return "Hi back, I thought your name was " + sender + " 🤔.", true
+	variables := strings.Split(text, " ")[1:]
+	data := Data{
+		Channel: strings.TrimPrefix(channel, "#"),
+		User:    sender,
+		BotName: username,
+		Arg:     variables,
 	}
 
-	if (strings.HasPrefix(text, "😴") ||
-		strings.Contains(text, "sleep")) &&
-		!strings.Contains(text, "no sleep") &&
-		!strings.Contains(text, "not sleep") {
-		return "No sleep.", true
+	rankFunc := func(user string) string { return rank(channel, user) }
+	pointFunc := func(user string) string { return points(channel, user) }
+	activetimeFunc := func(user string) string { return activetime(channel, user) }
+	wordsFunc := func(user string) string { return words(channel, user) }
+	messagesFunc := func(user string) string { return messages(channel, user) }
+	counterFunc := func(name string) string { return counter(channel, name) }
+	getFunc := func(url string) string { return get(data.Channel, url) }
+	topFunc := func(count string) string { return top(channel, count) }
+	incCounterFunc := func(name, change string) string { return incCounter(channel, name, change) }
+
+	tmpl, err := template.New(strs[0]).Funcs(template.FuncMap{
+		"rank":       rankFunc,
+		"points":     pointFunc,
+		"activetime": activetimeFunc,
+		"words":      wordsFunc,
+		"messages":   messagesFunc,
+		"counter":    counterFunc,
+		"get":        getFunc,
+		"top":        topFunc,
+		"incCounter": incCounterFunc,
+	}).Parse(tmplStr)
+	if err != nil {
+		log.Println("unable to parse template", err)
+		return ""
 	}
 
-	if text == "h" {
-		if err := q.UpdateHiccupCount(c, mdb.UpdateHiccupCountParams{
-			ChannelName: channel,
-			HiccupCount: 1,
-		}); nil != err {
-			log.Println("Unable to update hiccup_count", err)
-		}
-		return "", true
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, data); nil != err {
+		log.Println("unable to execute template", err)
+		return ""
 	}
 
-	// Only commands for these guys
-	if sender == "casweets" ||
-		sender == "meutraa" ||
-		sender == "vulpesmusketeer" ||
-		sender == "biological" ||
-		sender == "tristantwist_" {
-		if len(text) >= 2 && text[:2] == "h " {
-			count, err := strconv.ParseInt(text[2:], 10, 64)
-			if nil != err {
-				return "Unable to parse count!: " + err.Error(), true
-			}
-
-			if err := q.UpdateHiccupCount(c, mdb.UpdateHiccupCountParams{
-				ChannelName: channel,
-				HiccupCount: count,
-			}); nil != err {
-				log.Println("Unable to update hiccup_count", err)
-			}
-
-			return "", true
-		}
-	}
-
-	if strings.HasPrefix(text, "!hiccups") {
-		count, err := q.GetHiccupCount(c, channel)
-		if nil != err {
-			log.Println("unable to find channel", err)
-			return "", true
-		}
-		return fmt.Sprintf("Casweets has hiccuped %v times!", count), true
-	}
-	return "", false
+	return out.String()
 }
 
 func emojiHandler(c context.Context, channel, sender, text string) string {
@@ -300,7 +309,7 @@ func emojiHandler(c context.Context, channel, sender, text string) string {
 		return ""
 	}
 
-	rank, err := q.GetWatchTimeRank(c, mdb.GetWatchTimeRankParams{
+	rank, err := q.GetWatchTimeRank(c, db.GetWatchTimeRankParams{
 		ChannelName: channel,
 		Sender:      sender,
 	})
@@ -312,7 +321,8 @@ func emojiHandler(c context.Context, channel, sender, text string) string {
 	}
 
 	c2, cancel := context.WithTimeout(ctx, time.Second*5)
-	if err := q.UpdateEmoji(c2, mdb.UpdateEmojiParams{
+	defer cancel()
+	if err := q.UpdateEmoji(c2, db.UpdateEmojiParams{
 		ChannelName: channel,
 		Sender:      sender,
 		Emoji:       sql.NullString{String: string(rune), Valid: true},
@@ -320,13 +330,12 @@ func emojiHandler(c context.Context, channel, sender, text string) string {
 		log.Println("unable to update emoji", err)
 		return ""
 	}
-	cancel()
 	return ""
 }
 
 func handleMessage(e *ircevent.Event, channel string) {
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
-	if err := q.CreateUser(c, mdb.CreateUserParams{
+	if err := q.CreateUser(c, db.CreateUserParams{
 		ChannelName: channel,
 		Sender:      e.Nick,
 		TextColor:   sql.NullString{String: colors[rand.Intn(len(colors)-1)], Valid: true},
@@ -336,7 +345,7 @@ func handleMessage(e *ircevent.Event, channel string) {
 	cancel()
 
 	c, cancel = context.WithTimeout(ctx, time.Second*5)
-	if err := q.UpdateMetrics(c, mdb.UpdateMetricsParams{
+	if err := q.UpdateMetrics(c, db.UpdateMetricsParams{
 		ChannelName: channel,
 		Sender:      e.Nick,
 		WordCount:   int64(len(strings.Split(e.Message(), " "))),
@@ -346,7 +355,7 @@ func handleMessage(e *ircevent.Event, channel string) {
 	cancel()
 
 	c, cancel = context.WithTimeout(ctx, time.Second*5)
-	if err := q.CreateMessage(c, mdb.CreateMessageParams{
+	if err := q.CreateMessage(c, db.CreateMessageParams{
 		ChannelName: channel,
 		Sender:      e.Nick,
 		Message:     e.Message(),
@@ -355,7 +364,7 @@ func handleMessage(e *ircevent.Event, channel string) {
 	}
 	cancel()
 
-	res := handleCommand(channel, e.Nick, strings.ToLower(e.Message()))
+	res := handleCommand(channel, e.Nick, e.Message())
 	log.Printf("%v:%v:%v < %v\n", channel, e.Nick, e.Message(), res)
 	if "" != res {
 		irc.Privmsg(channel, res)

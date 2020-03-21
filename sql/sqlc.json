@@ -2,12 +2,12 @@
   "version": "1",
   "packages": [
       {
-      "name": "mdb",
+      "name": "db",
       "emit_json_tags": false,
       "emit_prepared_queries": false,
-      "path": "pkg/db",
-      "queries": "sql/queries/",
-      "schema": "sql/schema.sql"
+      "path": "../pkg/db",
+      "queries": "queries/",
+      "schema": "schema.sql"
     }
   ]
 }

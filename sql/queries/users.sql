@@ -18,7 +18,6 @@ SELECT
   ORDER BY watch_time DESC
   LIMIT $2;
 
-
 -- name: UpdateEmoji :exec
 UPDATE users
   SET emoji = $3

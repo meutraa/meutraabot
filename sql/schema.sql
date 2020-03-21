@@ -1,16 +1,26 @@
--- DROP TABLE IF EXISTS channels;
--- DROP TABLE IF EXISTS messages;
--- DROP TABLE IF EXISTS users;
--- DROP TABLE IF EXISTS user_messages;
-
 CREATE TABLE channels (
   channel_name text NOT NULL,
   created_at timestamp with time zone NOT NULL,
-  updated_at timestamp with time zone,
-  hiccup_count bigint NOT NULL
+  updated_at timestamp with time zone
 );
 
 ALTER TABLE channels ADD CONSTRAINT channel_pkey PRIMARY KEY (channel_name);
+
+CREATE TABLE commands (
+  channel_name text NOT NULL,
+  name text NOT NULL,
+  template text NOT NULL
+);
+
+ALTER TABLE commands ADD CONSTRAINT command_pkey PRIMARY KEY (channel_name, name);
+
+CREATE TABLE counter (
+  channel_name text NOT NULL,
+  name text NOT NULL,
+  value bigint NOT NULL DEFAULT 0
+);
+
+ALTER TABLE counter ADD CONSTRAINT counter_pkey PRIMARY KEY (channel_name, name);
 
 CREATE TABLE users (
   channel_name text NOT NULL,
@@ -31,7 +41,6 @@ CREATE TABLE messages (
   channel_name text NOT NULL,
   sender text NOT NULL,
   created_at timestamp with time zone NOT NULL,
-  updated_at timestamp with time zone,
   message text NOT NULL
 );
 
