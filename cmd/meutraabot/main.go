@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"math/rand"
 	"os"
@@ -24,6 +25,11 @@ var username = os.Getenv("TWITCH_USERNAME")
 
 var colors = [...]string{
 	"#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea",
+}
+
+type Message struct {
+	Channel string
+	Body    string
 }
 
 const activeInterval = 600
@@ -93,8 +99,18 @@ func main() {
 			irc.Join(channel)
 		}
 	})
+
+	send := make(chan Message)
+	go func(c chan Message) {
+		for msg := range c {
+			fmt.Println("sending", msg.Channel, msg.Body)
+			irc.Privmsg(msg.Channel, "/me "+msg.Body)
+			time.Sleep(time.Second * 2)
+		}
+	}(send)
+
 	irc.AddCallback("PRIVMSG", func(e *ircevent.Event) {
-		handleMessage(e, e.Arguments[0])
+		go handleMessage(send, e, e.Arguments[0])
 	})
 	irc.AddCallback("PING", func(e *ircevent.Event) {
 		irc.SendRaw("PONG :tmi.twitch.tv")
@@ -123,7 +139,7 @@ func main() {
 	}
 }
 
-func handleCommand(channel string, e *ircevent.Event) string {
+func handleCommand(channel string, e *ircevent.Event) (string, bool) {
 	sender := e.Nick
 	text := e.Message()
 	isMod := e.Tags["mod"] == "1"
@@ -132,7 +148,8 @@ func handleCommand(channel string, e *ircevent.Event) string {
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	if username == sender { // This is the bot sending a message
+	// This is the bot sending a message
+	if username == sender {
 		if text == "!restart" {
 			go func() {
 				time.Sleep(5 * time.Second)
@@ -140,55 +157,59 @@ func handleCommand(channel string, e *ircevent.Event) string {
 				irc.Disconnect()
 				os.Exit(0)
 			}()
-			return "Restarting in 5 seconds"
+			return "Restarting in 5 seconds", true
 		}
-		return ""
 	}
-	if "#"+sender == channel { // This is the channel owner
+
+	// This is the channel owner
+	if "#"+sender == channel {
 		if text == "!leave" {
 			if err := q.DeleteChannel(c, channel); nil != err {
-				return "Failed to leave channel"
+				return "Failed to leave channel", true
 			}
 
 			go func() {
 				time.Sleep(1 * time.Second)
 				irc.Part(channel)
 			}()
-			return "Bye bye 👋"
+			return "Bye bye 👋", true
 		}
 	}
 
 	if text == "!join" {
 		if err := q.CreateChannel(c, "#"+sender); nil != err {
-			log.Println("Unable to insert channel:", err)
-			return ""
+			log.Println("unable to insert channel:", err)
+			return "unable to join channel", true
 		}
 
 		irc.Join("#" + sender)
 		irc.Privmsg("#"+sender, "Hi 🙋")
-		return ""
+		return "I will be in #" + sender + " in just a moment", true
 	}
 
 	strs := strings.SplitN(text, " ", 2)
 
 	if strs[0] == "!cmd" {
 		if len(strs) == 1 {
-			return "!cmd set|list"
+			return "!cmd set|list", true
 		}
 
 		strs = strings.SplitN(strs[1], " ", 2)
 		if strs[0] == "list" {
 			commands, err := q.GetCommands(c, channel)
-			if nil != err {
+			if nil != err && err != sql.ErrNoRows {
 				log.Println("unable to get commands", channel, err)
+				return "unable to get commands", true
+			} else if err == sql.ErrNoRows {
+				return "no commands set", true
 			}
-			return strings.Join(commands, ", ")
+			return strings.Join(commands, ", "), true
 		}
 
 		if isMod {
 			if strs[0] == "show" {
 				if len(strs) == 1 {
-					return "!cmd show command"
+					return "!cmd show command", true
 				}
 				tmpl, err := q.GetCommand(c, db.GetCommandParams{
 					ChannelName: channel,
@@ -197,12 +218,12 @@ func handleCommand(channel string, e *ircevent.Event) string {
 				if nil != err {
 					log.Println("unable to get command", channel, strs[1], err)
 				}
-				return tmpl
+				return tmpl, true
 			}
 
 			if strs[0] == "set" {
 				if len(strs) == 1 {
-					return "!cmd set command template"
+					return "!cmd set command template", true
 				}
 
 				strs = strings.SplitN(strs[1], " ", 2)
@@ -222,7 +243,7 @@ func handleCommand(channel string, e *ircevent.Event) string {
 							Name:        name,
 						}); nil != err {
 							log.Println("unable to delete command", name, err)
-							break
+							return "unable to delete command", true
 						}
 						continue
 					}
@@ -232,10 +253,10 @@ func handleCommand(channel string, e *ircevent.Event) string {
 						Template:    tmpl,
 					}); nil != err {
 						log.Println("unable to set command", name, tmpl, err)
-						break
+						return "unable to set command", true
 					}
 				}
-				return ""
+				return "command set", true
 			}
 		}
 	}
@@ -251,13 +272,13 @@ func handleCommand(channel string, e *ircevent.Event) string {
 			Name:        command,
 		})
 		if nil != err && err != sql.ErrNoRows {
-			log.Println("unable to query command", err)
-			return ""
+			log.Println("unable to get command", err)
+			return "", false
 		}
 	}
 
 	if tmplStr == "" {
-		return ""
+		return "", false
 	}
 
 	variables := strings.Split(text, " ")[1:]
@@ -293,16 +314,16 @@ func handleCommand(channel string, e *ircevent.Event) string {
 	}).Parse(tmplStr)
 	if err != nil {
 		log.Println("unable to parse template", err)
-		return ""
+		return "command template is broken: " + err.Error(), true
 	}
 
 	var out bytes.Buffer
 	if err := tmpl.Execute(&out, data); nil != err {
 		log.Println("unable to execute template", err)
-		return ""
+		return "command executed wrongly: " + err.Error(), true
 	}
 
-	return out.String()
+	return out.String(), true
 }
 
 func emojiHandler(c context.Context, channel, sender, text string) string {
@@ -342,7 +363,14 @@ func emojiHandler(c context.Context, channel, sender, text string) string {
 	return ""
 }
 
-func handleMessage(e *ircevent.Event, channel string) {
+func splitRecursive(str string) []string {
+	if len(str) <= 480 {
+		return []string{str}
+	}
+	return append([]string{string(str[0:480] + "…")}, splitRecursive(str[480:])...)
+}
+
+func handleMessage(send chan Message, e *ircevent.Event, channel string) {
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
 	if err := q.CreateUser(c, db.CreateUserParams{
 		ChannelName: channel,
@@ -363,7 +391,7 @@ func handleMessage(e *ircevent.Event, channel string) {
 	}
 	cancel()
 
-	c, cancel = context.WithTimeout(ctx, time.Second*5)
+	c, cancel = context.WithTimeout(ctx, time.Second*2)
 	if err := q.CreateMessage(c, db.CreateMessageParams{
 		ChannelName: channel,
 		Sender:      e.Nick,
@@ -373,12 +401,18 @@ func handleMessage(e *ircevent.Event, channel string) {
 	}
 	cancel()
 
-	res := handleCommand(channel, e)
+	res, match := handleCommand(channel, e)
 	log.Printf("%v:%v:%v < %v\n", channel, e.Nick, e.Message(), res)
+	res = strings.TrimSpace(res)
 	if "" != res {
-		if strings.HasPrefix(e.Message(), "!") || strings.HasPrefix(e.Message(), "h") {
+		if (strings.HasPrefix(e.Message(), "!") || strings.HasPrefix(e.Message(), "h")) && e.Tags["mod"] != "1" && match {
 			irc.Privmsg(channel, "/delete "+e.Tags["id"])
 		}
-		irc.Privmsg(channel, "/me "+res)
+		for _, msg := range splitRecursive(res) {
+			send <- Message{
+				Channel: channel,
+				Body:    msg,
+			}
+		}
 	}
 }
