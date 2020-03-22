@@ -139,7 +139,7 @@ func main() {
 	}(send)
 
 	irc.AddCallback("PRIVMSG", func(e *ircevent.Event) {
-		go handleMessage(client, send, e, e.Arguments[0])
+		go handleMessage(client, send, e)
 	})
 	irc.AddCallback("PING", func(e *ircevent.Event) {
 		irc.SendRaw("PONG :tmi.twitch.tv")
@@ -220,7 +220,7 @@ func handleCommand(client *helix.Client, channel string, e *ircevent.Event) (str
 
 	if strs[0] == "!cmd" {
 		if len(strs) == 1 {
-			return "!cmd set|list", true
+			return "!cmd set|list|functions|variables", true
 		}
 
 		strs = strings.SplitN(strs[1], " ", 2)
@@ -233,6 +233,38 @@ func handleCommand(client *helix.Client, channel string, e *ircevent.Event) (str
 				return "no commands set", true
 			}
 			return strings.Join(commands, ", "), true
+		}
+
+		if strs[0] == "functions" {
+			return strings.Join([]string{
+				"rank(user string)",
+				"points(user string)",
+				"activetime(user string)",
+				"words(user string)",
+				"messages(user string)",
+				"counter(name string)",
+				"get(url string)",
+				"top(count numeric string)",
+				"followage(user string)",
+				"uptime()",
+				"incCounter(name string, count numeric string)",
+			}, ", "), true
+		}
+
+		if strs[0] == "variables" {
+			return strings.Join([]string{
+				".User",
+				".UserID",
+				".Channel",
+				".ChannelID",
+				".IsMod",
+				".IsOwner",
+				".IsSub",
+				".BotName",
+				".Command",
+				"index .Arg 0",
+				"index .Arg 1 (etc)",
+			}, ", "), true
 		}
 
 		if isMod {
@@ -312,41 +344,19 @@ func handleCommand(client *helix.Client, channel string, e *ircevent.Event) (str
 
 	variables := strings.Split(text, " ")[1:]
 	data := Data{
-		Channel: strings.TrimPrefix(channel, "#"),
-		IsMod:   isMod,
-		IsSub:   isSub,
-		User:    sender,
-		// ChannelID: e.Tags["room-id"],
-		// UserID:    e.Tags["user-id"],
-		BotName: username,
-		Arg:     variables,
+		Channel:   strings.TrimPrefix(channel, "#"),
+		IsMod:     isMod,
+		IsOwner:   "#"+e.Nick == channel,
+		IsSub:     isSub,
+		User:      sender,
+		ChannelID: e.Tags["room-id"],
+		UserID:    e.Tags["user-id"],
+		BotName:   username,
+		Command:   command,
+		Arg:       variables,
 	}
 
-	rankFunc := func(user string) string { return rank(channel, user) }
-	pointFunc := func(user string) string { return points(channel, user) }
-	activetimeFunc := func(user string) string { return activetime(channel, user) }
-	wordsFunc := func(user string) string { return words(channel, user) }
-	messagesFunc := func(user string) string { return messages(channel, user) }
-	counterFunc := func(name string) string { return counter(channel, name) }
-	getFunc := func(url string) string { return get(data.Channel, url) }
-	topFunc := func(count string) string { return top(channel, count) }
-	uptimeFunc := func() string { return uptime(client, e.Tags["room-id"]) }
-	followageFunc := func(user string) string { return followage(client, e.Tags["room-id"], user) }
-	incCounterFunc := func(name, change string) string { return incCounter(channel, name, change) }
-
-	tmpl, err := template.New(strs[0]).Funcs(template.FuncMap{
-		"rank":       rankFunc,
-		"points":     pointFunc,
-		"activetime": activetimeFunc,
-		"words":      wordsFunc,
-		"messages":   messagesFunc,
-		"counter":    counterFunc,
-		"get":        getFunc,
-		"top":        topFunc,
-		"followage":  followageFunc,
-		"uptime":     uptimeFunc,
-		"incCounter": incCounterFunc,
-	}).Parse(tmplStr)
+	tmpl, err := template.New(strs[0]).Funcs(FuncMap(client, e)).Parse(tmplStr)
 	if err != nil {
 		log.Println("unable to parse template", err)
 		return "command template is broken: " + err.Error(), true
@@ -405,7 +415,8 @@ func splitRecursive(str string) []string {
 	return append([]string{string(str[0:480] + "…")}, splitRecursive(str[480:])...)
 }
 
-func handleMessage(client *helix.Client, send chan Message, e *ircevent.Event, channel string) {
+func handleMessage(client *helix.Client, send chan Message, e *ircevent.Event) {
+	channel := e.Arguments[0]
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
 	if err := q.CreateUser(c, db.CreateUserParams{
 		ChannelName: channel,

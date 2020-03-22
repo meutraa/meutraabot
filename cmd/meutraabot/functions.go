@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/hako/durafmt"
 	"github.com/nicklaw5/helix"
+	ircevent "github.com/thoj/go-ircevent"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
@@ -22,9 +24,42 @@ type Data struct {
 	Channel   string
 	ChannelID string
 	IsMod     bool
+	IsOwner   bool
 	IsSub     bool
 	BotName   string
+	Command   string
 	Arg       []string
+}
+
+func FuncMap(client *helix.Client, e *ircevent.Event) template.FuncMap {
+	channel := e.Arguments[0]
+	roomID := e.Tags["room-id"]
+
+	rankFunc := func(user string) string { return rank(channel, user) }
+	pointFunc := func(user string) string { return points(channel, user) }
+	activetimeFunc := func(user string) string { return activetime(channel, user) }
+	wordsFunc := func(user string) string { return words(channel, user) }
+	messagesFunc := func(user string) string { return messages(channel, user) }
+	counterFunc := func(name string) string { return counter(channel, name) }
+	getFunc := func(url string) string { return get(channel, url) }
+	topFunc := func(count string) string { return top(channel, count) }
+	uptimeFunc := func() string { return uptime(client, roomID) }
+	followageFunc := func(user string) string { return followage(client, roomID, user) }
+	incCounterFunc := func(name, change string) string { return incCounter(channel, name, change) }
+
+	return template.FuncMap{
+		"rank":       rankFunc,
+		"points":     pointFunc,
+		"activetime": activetimeFunc,
+		"words":      wordsFunc,
+		"messages":   messagesFunc,
+		"counter":    counterFunc,
+		"get":        getFunc,
+		"top":        topFunc,
+		"followage":  followageFunc,
+		"uptime":     uptimeFunc,
+		"incCounter": incCounterFunc,
+	}
 }
 
 // case "!emoji":
@@ -145,6 +180,7 @@ func counter(channel, name string) string {
 }
 
 func get(channel, url string) string {
+	channel = strings.TrimPrefix(channel, "#")
 	client := &http.Client{
 		Timeout: 2 * time.Second,
 	}
