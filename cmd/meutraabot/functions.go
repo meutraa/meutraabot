@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -10,16 +11,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hako/durafmt"
+	"github.com/nicklaw5/helix"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
 type Data struct {
-	User    string
-	Channel string
-	IsMod   bool
-	IsSub   bool
-	BotName string
-	Arg     []string
+	User      string
+	UserID    string
+	Channel   string
+	ChannelID string
+	IsMod     bool
+	IsSub     bool
+	BotName   string
+	Arg       []string
 }
 
 // case "!emoji":
@@ -44,6 +49,66 @@ func top(channel, count string) string {
 	}
 
 	return strings.Join(top, ", ")
+}
+
+func uptime(client *helix.Client, channelID string) string {
+	resp, err := client.GetStreams(&helix.StreamsParams{
+		First:   1,
+		UserIDs: []string{channelID},
+	})
+	if err != nil {
+		log.Println("unable to get stream info", err)
+		return ""
+	}
+
+	if len(resp.Data.Streams) == 0 {
+		log.Println("no stream found for", channelID)
+		return "not live"
+	}
+
+	start := resp.Data.Streams[0].StartedAt
+	return durafmt.Parse(time.Now().Sub(start)).LimitFirstN(2).String()
+}
+
+func User(client *helix.Client, user string) (helix.User, error) {
+	resp, err := client.GetUsers(&helix.UsersParams{
+		Logins: []string{user},
+	})
+	if err != nil {
+		log.Println("unable to get user", err)
+		return helix.User{}, err
+	}
+
+	if len(resp.Data.Users) == 0 {
+		log.Println("no user found for", user)
+		return helix.User{}, errors.New("user not found")
+	}
+
+	return resp.Data.Users[0], nil
+}
+
+func followage(client *helix.Client, channelID, user string) string {
+	u, err := User(client, user)
+	if nil != err {
+		return "can not find user " + user
+	}
+	resp, err := client.GetUsersFollows(&helix.UsersFollowsParams{
+		First:  1,
+		FromID: u.ID,
+		ToID:   channelID,
+	})
+	if err != nil {
+		log.Println("unable to get user follower info", err)
+		return ""
+	}
+
+	if len(resp.Data.Follows) == 0 {
+		log.Println("no follow info found for", channelID, user)
+		return "user does not follow"
+	}
+
+	start := resp.Data.Follows[0].FollowedAt
+	return durafmt.Parse(time.Now().Sub(start)).LimitFirstN(2).String()
 }
 
 func incCounter(channel, name string, change string) string {

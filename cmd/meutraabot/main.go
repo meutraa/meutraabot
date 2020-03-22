@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/nicklaw5/helix"
+
 	_ "github.com/lib/pq"
 	ircevent "github.com/thoj/go-ircevent"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
@@ -46,9 +48,11 @@ var ctx = context.Background()
 func main() {
 	// Read our username from the environment, end if failure
 	oauth := os.Getenv("TWITCH_OAUTH_TOKEN")
+	clientID := os.Getenv("TWITCH_CLIENT_ID")
+	clientSecret := os.Getenv("TWITCH_CLIENT_SECRET")
 	connString := os.Getenv("POSTGRES_CONNECTION_STRING")
 
-	if "" == username || "" == connString || "" == oauth {
+	if "" == username || "" == connString || "" == oauth || "" == clientID || "" == clientSecret {
 		log.Println("Missing environment variable")
 		return
 	}
@@ -71,6 +75,31 @@ func main() {
 	}()
 
 	q = db.New(conn)
+
+	client, err := helix.NewClient(&helix.Options{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+	})
+	if err != nil {
+		log.Fatalln("unable to create twitch api client", err)
+		return
+	}
+
+	resp, err := client.GetAppAccessToken()
+	if err != nil {
+		log.Fatalln("unable to get app access token", err)
+		return
+	}
+
+	client, err = helix.NewClient(&helix.Options{
+		ClientID:       clientID,
+		ClientSecret:   clientSecret,
+		AppAccessToken: resp.Data.AccessToken,
+	})
+	if err != nil {
+		log.Fatalln("unable to create twitch api client with app token", err)
+		return
+	}
 
 	// Create a channel for the OS to notify us of interrupts/signals
 	interrupt := make(chan os.Signal, 1)
@@ -110,7 +139,7 @@ func main() {
 	}(send)
 
 	irc.AddCallback("PRIVMSG", func(e *ircevent.Event) {
-		go handleMessage(send, e, e.Arguments[0])
+		go handleMessage(client, send, e, e.Arguments[0])
 	})
 	irc.AddCallback("PING", func(e *ircevent.Event) {
 		irc.SendRaw("PONG :tmi.twitch.tv")
@@ -139,10 +168,10 @@ func main() {
 	}
 }
 
-func handleCommand(channel string, e *ircevent.Event) (string, bool) {
+func handleCommand(client *helix.Client, channel string, e *ircevent.Event) (string, bool) {
 	sender := e.Nick
 	text := e.Message()
-	isMod := e.Tags["mod"] == "1"
+	isMod := e.Tags["mod"] == "1" || ("#"+e.Nick == channel) || e.Nick == "meutraa"
 	isSub := e.Tags["subscriber"] == "1"
 
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
@@ -287,6 +316,8 @@ func handleCommand(channel string, e *ircevent.Event) (string, bool) {
 		IsMod:   isMod,
 		IsSub:   isSub,
 		User:    sender,
+		// ChannelID: e.Tags["room-id"],
+		// UserID:    e.Tags["user-id"],
 		BotName: username,
 		Arg:     variables,
 	}
@@ -299,6 +330,8 @@ func handleCommand(channel string, e *ircevent.Event) (string, bool) {
 	counterFunc := func(name string) string { return counter(channel, name) }
 	getFunc := func(url string) string { return get(data.Channel, url) }
 	topFunc := func(count string) string { return top(channel, count) }
+	uptimeFunc := func() string { return uptime(client, e.Tags["room-id"]) }
+	followageFunc := func(user string) string { return followage(client, e.Tags["room-id"], user) }
 	incCounterFunc := func(name, change string) string { return incCounter(channel, name, change) }
 
 	tmpl, err := template.New(strs[0]).Funcs(template.FuncMap{
@@ -310,6 +343,8 @@ func handleCommand(channel string, e *ircevent.Event) (string, bool) {
 		"counter":    counterFunc,
 		"get":        getFunc,
 		"top":        topFunc,
+		"followage":  followageFunc,
+		"uptime":     uptimeFunc,
 		"incCounter": incCounterFunc,
 	}).Parse(tmplStr)
 	if err != nil {
@@ -370,7 +405,7 @@ func splitRecursive(str string) []string {
 	return append([]string{string(str[0:480] + "…")}, splitRecursive(str[480:])...)
 }
 
-func handleMessage(send chan Message, e *ircevent.Event, channel string) {
+func handleMessage(client *helix.Client, send chan Message, e *ircevent.Event, channel string) {
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
 	if err := q.CreateUser(c, db.CreateUserParams{
 		ChannelName: channel,
@@ -401,11 +436,13 @@ func handleMessage(send chan Message, e *ircevent.Event, channel string) {
 	}
 	cancel()
 
-	res, match := handleCommand(channel, e)
+	res, match := handleCommand(client, channel, e)
 	log.Printf("%v:%v:%v < %v\n", channel, e.Nick, e.Message(), res)
 	res = strings.TrimSpace(res)
+	log.Println(e.Tags)
 	if "" != res {
-		if (strings.HasPrefix(e.Message(), "!") || strings.HasPrefix(e.Message(), "h")) && e.Tags["mod"] != "1" && match {
+		isMod := e.Tags["mod"] == "1" || ("#"+e.Nick == channel) || e.Nick == "meutraa"
+		if (strings.HasPrefix(e.Message(), "!") || strings.HasPrefix(e.Message(), "h")) && !isMod && match {
 			irc.Privmsg(channel, "/delete "+e.Tags["id"])
 		}
 		for _, msg := range splitRecursive(res) {
