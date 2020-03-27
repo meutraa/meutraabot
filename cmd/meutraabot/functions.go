@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -23,6 +24,7 @@ type Data struct {
 	UserID    string
 	Channel   string
 	ChannelID string
+	MessageID string
 	IsMod     bool
 	IsOwner   bool
 	IsSub     bool
@@ -42,6 +44,7 @@ func FuncMap(client *helix.Client, e *ircevent.Event) template.FuncMap {
 	messagesFunc := func(user string) string { return messages(channel, user) }
 	counterFunc := func(name string) string { return counter(channel, name) }
 	getFunc := func(url string) string { return get(channel, url) }
+	jsonParseFunc := func(key, json string) string { return jsonparse(channel, key, json) }
 	topFunc := func(count string) string { return top(channel, count) }
 	uptimeFunc := func() string { return uptime(client, roomID) }
 	followageFunc := func(user string) string { return followage(client, roomID, user) }
@@ -55,6 +58,7 @@ func FuncMap(client *helix.Client, e *ircevent.Event) template.FuncMap {
 		"messages":   messagesFunc,
 		"counter":    counterFunc,
 		"get":        getFunc,
+		"json":       jsonParseFunc,
 		"top":        topFunc,
 		"followage":  followageFunc,
 		"uptime":     uptimeFunc,
@@ -180,7 +184,6 @@ func counter(channel, name string) string {
 }
 
 func get(channel, url string) string {
-	channel = strings.TrimPrefix(channel, "#")
 	client := &http.Client{
 		Timeout: 2 * time.Second,
 	}
@@ -204,6 +207,20 @@ func get(channel, url string) string {
 	str := strings.ReplaceAll(string(body), "\n", " ")
 	str = strings.ReplaceAll(str, "\r", "")
 	return str
+}
+
+func jsonparse(channel, key, str string) string {
+	m := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(str), &m); err != nil {
+		log.Println("unable to unmarshal", err)
+		return ""
+	}
+	data, err := json.Marshal(m[key])
+	if nil != err {
+		log.Println("unable to marshal data", err)
+		return ""
+	}
+	return string(data)
 }
 
 func metrics(channel, user string, onMetrics func(db.GetMetricsRow) string) string {

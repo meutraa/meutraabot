@@ -72,6 +72,46 @@ func (q *Queries) GetCommands(ctx context.Context, channelName string) ([]string
 	return items, nil
 }
 
+const getMatchingCommands = `-- name: GetMatchingCommands :many
+SELECT template, name, ($1::text ~ name)::bool as Match
+  FROM commands
+  WHERE channel_name = $2
+`
+
+type GetMatchingCommandsParams struct {
+	Message     string
+	ChannelName string
+}
+
+type GetMatchingCommandsRow struct {
+	Template string
+	Name     string
+	Match    bool
+}
+
+func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingCommandsParams) ([]GetMatchingCommandsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getMatchingCommands, arg.Message, arg.ChannelName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMatchingCommandsRow
+	for rows.Next() {
+		var i GetMatchingCommandsRow
+		if err := rows.Scan(&i.Template, &i.Name, &i.Match); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setCommand = `-- name: SetCommand :exec
 INSERT INTO commands (channel_name, name, template)
   VALUES ($1, $2, $3)

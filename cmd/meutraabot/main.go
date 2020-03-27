@@ -133,7 +133,11 @@ func main() {
 	go func(c chan Message) {
 		for msg := range c {
 			fmt.Println("sending", msg.Channel, msg.Body)
-			irc.Privmsg(msg.Channel, "/me "+msg.Body)
+			if strings.HasPrefix(msg.Body, "/") {
+				irc.Privmsg(msg.Channel, msg.Body)
+			} else {
+				irc.Privmsg(msg.Channel, "/me "+msg.Body)
+			}
 			time.Sleep(time.Second * 2)
 		}
 	}(send)
@@ -176,19 +180,6 @@ func handleCommand(client *helix.Client, channel string, e *ircevent.Event) (str
 
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
-
-	// This is the bot sending a message
-	if username == sender {
-		if text == "!restart" {
-			go func() {
-				time.Sleep(5 * time.Second)
-				irc.Quit()
-				irc.Disconnect()
-				os.Exit(0)
-			}()
-			return "Restarting in 5 seconds", true
-		}
-	}
 
 	// This is the channel owner
 	if "#"+sender == channel {
@@ -244,6 +235,7 @@ func handleCommand(client *helix.Client, channel string, e *ircevent.Event) (str
 				"messages(user string)",
 				"counter(name string)",
 				"get(url string)",
+				"json(key string, json string)",
 				"top(count numeric string)",
 				"followage(user string)",
 				"uptime()",
@@ -279,7 +271,7 @@ func handleCommand(client *helix.Client, channel string, e *ircevent.Event) (str
 				if nil != err {
 					log.Println("unable to get command", channel, strs[1], err)
 				}
-				return tmpl, true
+				return strs[1] + ": " + tmpl, true
 			}
 
 			if strs[0] == "set" {
@@ -322,53 +314,76 @@ func handleCommand(client *helix.Client, channel string, e *ircevent.Event) (str
 		}
 	}
 
+	// Check to see if this matches a command
 	var tmplStr string
 	var command = strings.ToLower(strs[0])
 	if command == "!test" && isMod {
 		tmplStr = strs[1]
 	} else {
 		var err error
-		tmplStr, err = q.GetCommand(c, db.GetCommandParams{
+		commands, err := q.GetMatchingCommands(c, db.GetMatchingCommandsParams{
 			ChannelName: channel,
-			Name:        command,
+			Message:     strings.ToLower(text),
 		})
 		if nil != err && err != sql.ErrNoRows {
 			log.Println("unable to get command", err)
 			return "", false
 		}
+
+		matchingCommands := make([]db.GetMatchingCommandsRow, 0, len(commands))
+		for _, c := range commands {
+			if c.Match {
+				matchingCommands = append(matchingCommands, c)
+			}
+		}
+
+		if len(matchingCommands) > 1 {
+			commands := make([]string, len(matchingCommands))
+			for i, c := range matchingCommands {
+				commands[i] = c.Name
+			}
+			return "message matches multiple commands: " + strings.Join(commands, ", "), false
+		}
+
+		if len(matchingCommands) != 0 {
+			log.Println("matched", matchingCommands[0].Name)
+			tmplStr = matchingCommands[0].Template
+		}
 	}
 
-	if tmplStr == "" {
-		return "", false
+	// Execute command
+	if tmplStr != "" {
+		variables := strings.Split(text, " ")[1:]
+		data := Data{
+			Channel:   strings.TrimPrefix(channel, "#"),
+			IsMod:     isMod,
+			IsOwner:   "#"+e.Nick == channel,
+			IsSub:     isSub,
+			MessageID: e.Tags["id"],
+			User:      sender,
+			ChannelID: e.Tags["room-id"],
+			UserID:    e.Tags["user-id"],
+			BotName:   username,
+			Command:   command,
+			Arg:       variables,
+		}
+
+		tmpl, err := template.New(strs[0]).Funcs(FuncMap(client, e)).Parse(tmplStr)
+		if err != nil {
+			log.Println("unable to parse template", err)
+			return "command template is broken: " + err.Error(), true
+		}
+
+		var out bytes.Buffer
+		if err := tmpl.Execute(&out, data); nil != err {
+			log.Println("unable to execute template", err)
+			return "command executed wrongly: " + err.Error(), true
+		}
+
+		return out.String(), true
 	}
 
-	variables := strings.Split(text, " ")[1:]
-	data := Data{
-		Channel:   strings.TrimPrefix(channel, "#"),
-		IsMod:     isMod,
-		IsOwner:   "#"+e.Nick == channel,
-		IsSub:     isSub,
-		User:      sender,
-		ChannelID: e.Tags["room-id"],
-		UserID:    e.Tags["user-id"],
-		BotName:   username,
-		Command:   command,
-		Arg:       variables,
-	}
-
-	tmpl, err := template.New(strs[0]).Funcs(FuncMap(client, e)).Parse(tmplStr)
-	if err != nil {
-		log.Println("unable to parse template", err)
-		return "command template is broken: " + err.Error(), true
-	}
-
-	var out bytes.Buffer
-	if err := tmpl.Execute(&out, data); nil != err {
-		log.Println("unable to execute template", err)
-		return "command executed wrongly: " + err.Error(), true
-	}
-
-	return out.String(), true
+	return "", false
 }
 
 func emojiHandler(c context.Context, channel, sender, text string) string {
@@ -417,6 +432,11 @@ func splitRecursive(str string) []string {
 
 func handleMessage(client *helix.Client, send chan Message, e *ircevent.Event) {
 	channel := e.Arguments[0]
+
+	if username == e.Nick {
+		return
+	}
+
 	c, cancel := context.WithTimeout(ctx, time.Second*5)
 	if err := q.CreateUser(c, db.CreateUserParams{
 		ChannelName: channel,
@@ -447,15 +467,10 @@ func handleMessage(client *helix.Client, send chan Message, e *ircevent.Event) {
 	}
 	cancel()
 
-	res, match := handleCommand(client, channel, e)
+	res, _ := handleCommand(client, channel, e)
 	log.Printf("%v:%v:%v < %v\n", channel, e.Nick, e.Message(), res)
 	res = strings.TrimSpace(res)
-	log.Println(e.Tags)
 	if "" != res {
-		isMod := e.Tags["mod"] == "1" || ("#"+e.Nick == channel) || e.Nick == "meutraa"
-		if (strings.HasPrefix(e.Message(), "!") || strings.HasPrefix(e.Message(), "h")) && !isMod && match {
-			irc.Privmsg(channel, "/delete "+e.Tags["id"])
-		}
 		for _, msg := range splitRecursive(res) {
 			send <- Message{
 				Channel: channel,

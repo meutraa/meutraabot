@@ -4,6 +4,11 @@ SELECT template
   WHERE name = $2
   AND channel_name = $1;
 
+-- name: GetMatchingCommands :many
+SELECT template, name, (sqlc.arg('Message')::text ~ name)::bool as Match
+  FROM commands
+  WHERE channel_name = sqlc.arg('ChannelName');
+
 -- name: GetCommands :many
 SELECT name
   FROM commands
