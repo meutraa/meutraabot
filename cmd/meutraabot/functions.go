@@ -13,9 +13,9 @@ import (
 	"text/template"
 	"time"
 
+	irc "github.com/gempir/go-twitch-irc/v2"
 	"github.com/hako/durafmt"
 	"github.com/nicklaw5/helix"
-	ircevent "github.com/thoj/go-ircevent"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
@@ -33,23 +33,20 @@ type Data struct {
 	Arg       []string
 }
 
-func (s *Server) FuncMap(ctx context.Context, e *ircevent.Event) template.FuncMap {
-	channel := e.Arguments[0]
-	roomID := e.Tags["room-id"]
-
+func (s *Server) FuncMap(ctx context.Context, e *irc.PrivateMessage) template.FuncMap {
 	return template.FuncMap{
-		"rank":       func(user string) string { return s.funcRank(ctx, channel, user) },
-		"points":     func(user string) string { return s.funcPoints(ctx, channel, user) },
-		"activetime": func(user string) string { return s.funcActivetime(ctx, channel, user) },
-		"words":      func(user string) string { return s.funcWords(ctx, channel, user) },
-		"messages":   func(user string) string { return s.funcMessages(ctx, channel, user) },
-		"counter":    func(name string) string { return s.funcCounter(ctx, channel, name) },
-		"get":        func(url string) string { return s.funcGet(ctx, channel, url) },
-		"json":       func(key, json string) string { return s.funcJsonParse(channel, key, json) },
-		"top":        func(count string) string { return s.funcTop(ctx, channel, count) },
-		"followage":  func(user string) string { return s.funcFollowage(roomID, user) },
-		"uptime":     func() string { return s.funcUptime(roomID) },
-		"incCounter": func(name, change string) string { return s.funcIncCounter(ctx, channel, name, change) },
+		"rank":       func(user string) string { return s.funcRank(ctx, e.Channel, user) },
+		"points":     func(user string) string { return s.funcPoints(ctx, e.Channel, user) },
+		"activetime": func(user string) string { return s.funcActivetime(ctx, e.Channel, user) },
+		"words":      func(user string) string { return s.funcWords(ctx, e.Channel, user) },
+		"messages":   func(user string) string { return s.funcMessages(ctx, e.Channel, user) },
+		"counter":    func(name string) string { return s.funcCounter(ctx, e.Channel, name) },
+		"get":        func(url string) string { return s.funcGet(ctx, e.Channel, url) },
+		"json":       func(key, json string) string { return s.funcJsonParse(e.Channel, key, json) },
+		"top":        func(count string) string { return s.funcTop(ctx, e.Channel, count) },
+		"followage":  func(user string) string { return s.funcFollowage(e.RoomID, user) },
+		"uptime":     func() string { return s.funcUptime(e.RoomID) },
+		"incCounter": func(name, change string) string { return s.funcIncCounter(ctx, e.Channel, name, change) },
 	}
 }
 
@@ -60,7 +57,7 @@ func (s *Server) funcTop(ctx context.Context, channel, count string) string {
 		c = int32(cnt)
 	}
 	top, err := s.q.GetTopWatchers(ctx, db.GetTopWatchersParams{
-		ChannelName: channel,
+		ChannelName: "#" + channel,
 		Limit:       c,
 	})
 	if nil != err {
@@ -141,7 +138,7 @@ func (s *Server) funcIncCounter(ctx context.Context, channel, name string, chang
 	}
 
 	if err := s.q.UpdateCounter(ctx, db.UpdateCounterParams{
-		ChannelName: channel,
+		ChannelName: "#" + channel,
 		Name:        strings.ToLower(name),
 		Value:       count,
 	}); nil != err {
@@ -152,7 +149,7 @@ func (s *Server) funcIncCounter(ctx context.Context, channel, name string, chang
 
 func (s *Server) funcCounter(ctx context.Context, channel, name string) string {
 	value, err := s.q.GetCounter(ctx, db.GetCounterParams{
-		ChannelName: channel,
+		ChannelName: "#" + channel,
 		Name:        strings.ToLower(name),
 	})
 	if nil != err {
@@ -204,7 +201,7 @@ func (s *Server) metrics(ctx context.Context, channel, user string, onMetrics fu
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
 	defer cancel()
 	metrics, err := s.q.GetMetrics(ctx, db.GetMetricsParams{
-		ChannelName: channel,
+		ChannelName: "#" + channel,
 		Sender:      strings.ToLower(user),
 	})
 	if nil != err {
@@ -240,7 +237,7 @@ func (s *Server) funcMessages(ctx context.Context, channel, user string) string 
 
 func (s *Server) funcRank(ctx context.Context, channel, user string) string {
 	rank, err := s.q.GetWatchTimeRank(ctx, db.GetWatchTimeRankParams{
-		ChannelName: channel,
+		ChannelName: "#" + channel,
 		Sender:      strings.ToLower(user),
 	})
 	if nil != err {

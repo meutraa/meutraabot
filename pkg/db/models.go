@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+type Ban struct {
+	Username string
+}
+
 type Channel struct {
 	ChannelName string
 	CreatedAt   time.Time

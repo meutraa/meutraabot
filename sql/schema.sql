@@ -6,6 +6,12 @@ CREATE TABLE channels (
 
 ALTER TABLE channels ADD CONSTRAINT channel_pkey PRIMARY KEY (channel_name);
 
+CREATE TABLE bans (
+  username text NOT NULL
+);
+
+ALTER TABLE bans ADD CONSTRAINT bans_pkey PRIMARY KEY (username);
+
 CREATE TABLE commands (
   channel_name text NOT NULL,
   name text NOT NULL,

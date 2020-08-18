@@ -3,22 +3,20 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"strings"
 	"time"
 
+	irc "github.com/gempir/go-twitch-irc/v2"
 	"github.com/nicklaw5/helix"
 	"github.com/pkg/errors"
-	ircevent "github.com/thoj/go-ircevent"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
 type Server struct {
-	irc            *ircevent.Connection
+	irc            *irc.Client
 	conn           *sql.DB
-	send           chan Message
 	twitch         *helix.Client
 	q              *db.Queries
 	activeInterval int
@@ -35,7 +33,6 @@ type Environment struct {
 
 func (s *Server) Close() {
 	if nil != s.irc {
-		s.irc.Quit()
 		s.irc.Disconnect()
 	}
 	if nil != s.conn {
@@ -91,58 +88,50 @@ func (s *Server) PrepareTwitchClient() error {
 	return nil
 }
 
-func (s *Server) PrepareIRC() (chan bool, error) {
-	done := make(chan bool, 1)
-	s.send = make(chan Message)
-
-	s.irc = ircevent.IRC(s.env.twitchUsername, s.env.twitchUsername)
-	s.irc.UseTLS = true
-	s.irc.Password = s.env.twitchOauthToken
-	s.irc.AddCallback("001", func(e *ircevent.Event) {
-		s.irc.Join("#" + s.env.twitchUsername)
-		c, cancel := context.WithTimeout(context.Background(), time.Second*5)
-		defer cancel()
-
-		// Get a list of all our channels
-		channels, err := s.q.GetChannelNames(c)
-		if nil != err {
-			log.Println(err)
-		}
-		// Try to join all channels in our channel table
-		for _, channel := range channels {
-			s.irc.Join(channel)
-		}
-	})
-
-	go func(c chan Message) {
-		for msg := range c {
-			fmt.Println("sending", msg.Channel, msg.Body)
-			if strings.HasPrefix(msg.Body, "/") {
-				s.irc.Privmsg(msg.Channel, msg.Body)
-			} else {
-				s.irc.Privmsg(msg.Channel, "/me "+msg.Body)
-			}
-			time.Sleep(time.Second * 2)
-		}
-	}(s.send)
-
-	s.irc.AddCallback("PRIVMSG", func(e *ircevent.Event) {
-		s.handleMessage(e)
-	})
-	s.irc.AddCallback("PING", func(e *ircevent.Event) {
-		s.irc.SendRaw("PONG :tmi.twitch.tv")
-	})
-	if err := s.irc.Connect("irc.chat.twitch.tv:6697"); nil != err {
-		return done, errors.Wrap(err, "unable to connect to irc")
+func (s *Server) OnChannels(ctx context.Context, onChannel func(channel string)) error {
+	channels, err := s.q.GetChannelNames(ctx)
+	if nil != err && err != sql.ErrNoRows {
+		return errors.Wrap(err, "unable to get channels")
 	}
 
-	s.irc.SendRaw("CAP REQ :twitch.tv/tags")
+	// Try to join all channels in our channel table
+	for _, channel := range channels {
+		onChannel(strings.TrimPrefix(channel, "#"))
+	}
+	return nil
+}
 
-	go func() {
-		s.irc.Loop()
-		done <- true
-	}()
-	return done, nil
+func (s *Server) PrepareIRC() error {
+	s.irc = irc.NewClient(s.env.twitchUsername, s.env.twitchOauthToken)
+	s.irc.OnGlobalUserStateMessage(func(m irc.GlobalUserStateMessage) {
+		s.irc.Join(s.env.twitchUsername)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+
+		if err := s.OnChannels(ctx, func(channel string) {
+			s.irc.Join(channel)
+		}); nil != err {
+			log.Println(err)
+		}
+	})
+
+	s.irc.OnUserJoinMessage(func(m irc.UserJoinMessage) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+
+		isBanned, err := s.q.IsUserBanned(ctx, m.User)
+		if nil != err {
+			log.Println("unable to check if user is banned", err)
+			return
+		}
+		if isBanned {
+			s.irc.Say(m.Channel, "/ban "+m.User)
+		}
+	})
+
+	s.irc.OnPrivateMessage(s.handleMessage)
+
+	return s.irc.Connect()
 }
 
 func (s *Server) ReadEnvironmentVariables() error {

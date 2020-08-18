@@ -22,6 +22,9 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.banUserStmt, err = db.PrepareContext(ctx, banUser); err != nil {
+		return nil, fmt.Errorf("error preparing query BanUser: %w", err)
+	}
 	if q.createChannelStmt, err = db.PrepareContext(ctx, createChannel); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateChannel: %w", err)
 	}
@@ -36,6 +39,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteCommandStmt, err = db.PrepareContext(ctx, deleteCommand); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteCommand: %w", err)
+	}
+	if q.getBannedUsersStmt, err = db.PrepareContext(ctx, getBannedUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBannedUsers: %w", err)
 	}
 	if q.getChannelNamesStmt, err = db.PrepareContext(ctx, getChannelNames); err != nil {
 		return nil, fmt.Errorf("error preparing query GetChannelNames: %w", err)
@@ -61,6 +67,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getWatchTimeRankStmt, err = db.PrepareContext(ctx, getWatchTimeRank); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWatchTimeRank: %w", err)
 	}
+	if q.isUserBannedStmt, err = db.PrepareContext(ctx, isUserBanned); err != nil {
+		return nil, fmt.Errorf("error preparing query IsUserBanned: %w", err)
+	}
 	if q.setCommandStmt, err = db.PrepareContext(ctx, setCommand); err != nil {
 		return nil, fmt.Errorf("error preparing query SetCommand: %w", err)
 	}
@@ -75,6 +84,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
+	if q.banUserStmt != nil {
+		if cerr := q.banUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing banUserStmt: %w", cerr)
+		}
+	}
 	if q.createChannelStmt != nil {
 		if cerr := q.createChannelStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createChannelStmt: %w", cerr)
@@ -98,6 +112,11 @@ func (q *Queries) Close() error {
 	if q.deleteCommandStmt != nil {
 		if cerr := q.deleteCommandStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteCommandStmt: %w", cerr)
+		}
+	}
+	if q.getBannedUsersStmt != nil {
+		if cerr := q.getBannedUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBannedUsersStmt: %w", cerr)
 		}
 	}
 	if q.getChannelNamesStmt != nil {
@@ -138,6 +157,11 @@ func (q *Queries) Close() error {
 	if q.getWatchTimeRankStmt != nil {
 		if cerr := q.getWatchTimeRankStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getWatchTimeRankStmt: %w", cerr)
+		}
+	}
+	if q.isUserBannedStmt != nil {
+		if cerr := q.isUserBannedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing isUserBannedStmt: %w", cerr)
 		}
 	}
 	if q.setCommandStmt != nil {
@@ -194,11 +218,13 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 type Queries struct {
 	db                      DBTX
 	tx                      *sql.Tx
+	banUserStmt             *sql.Stmt
 	createChannelStmt       *sql.Stmt
 	createMessageStmt       *sql.Stmt
 	createUserStmt          *sql.Stmt
 	deleteChannelStmt       *sql.Stmt
 	deleteCommandStmt       *sql.Stmt
+	getBannedUsersStmt      *sql.Stmt
 	getChannelNamesStmt     *sql.Stmt
 	getCommandStmt          *sql.Stmt
 	getCommandsStmt         *sql.Stmt
@@ -207,6 +233,7 @@ type Queries struct {
 	getMetricsStmt          *sql.Stmt
 	getTopWatchersStmt      *sql.Stmt
 	getWatchTimeRankStmt    *sql.Stmt
+	isUserBannedStmt        *sql.Stmt
 	setCommandStmt          *sql.Stmt
 	updateCounterStmt       *sql.Stmt
 	updateMetricsStmt       *sql.Stmt
@@ -216,11 +243,13 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
 		db:                      tx,
 		tx:                      tx,
+		banUserStmt:             q.banUserStmt,
 		createChannelStmt:       q.createChannelStmt,
 		createMessageStmt:       q.createMessageStmt,
 		createUserStmt:          q.createUserStmt,
 		deleteChannelStmt:       q.deleteChannelStmt,
 		deleteCommandStmt:       q.deleteCommandStmt,
+		getBannedUsersStmt:      q.getBannedUsersStmt,
 		getChannelNamesStmt:     q.getChannelNamesStmt,
 		getCommandStmt:          q.getCommandStmt,
 		getCommandsStmt:         q.getCommandsStmt,
@@ -229,6 +258,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getMetricsStmt:          q.getMetricsStmt,
 		getTopWatchersStmt:      q.getTopWatchersStmt,
 		getWatchTimeRankStmt:    q.getWatchTimeRankStmt,
+		isUserBannedStmt:        q.isUserBannedStmt,
 		setCommandStmt:          q.setCommandStmt,
 		updateCounterStmt:       q.updateCounterStmt,
 		updateMetricsStmt:       q.updateMetricsStmt,

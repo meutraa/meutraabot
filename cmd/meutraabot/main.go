@@ -12,8 +12,8 @@ import (
 	"text/template"
 	"time"
 
+	irc "github.com/gempir/go-twitch-irc/v2"
 	_ "github.com/lib/pq"
-	ircevent "github.com/thoj/go-ircevent"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
@@ -46,68 +46,71 @@ func run() error {
 		return err
 	}
 
-	done, err := s.PrepareIRC()
-	if nil != err {
+	if err := s.PrepareIRC(); nil != err {
 		return err
 	}
 
 	// Create a channel for the OS to notify us of interrupts/signals
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
-
-	for {
-		select {
-		case <-interrupt:
-		case <-done:
-			return nil
-		}
-	}
+	<-interrupt
+	return nil
 }
 
-func (s *Server) handleCommand(ctx context.Context, channel string, e *ircevent.Event) (string, bool) {
-	sender := e.Nick
-	text := e.Message()
-	isMod := e.Tags["mod"] == "1" || ("#"+e.Nick == channel) || e.Nick == "meutraa"
+func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) (string, bool) {
+	text := e.Message
+	isAdmin := (e.User.Name == e.Channel) || e.User.Name == "meutraa"
+	isMod := e.Tags["mod"] == "1" || isAdmin
 	isSub := e.Tags["subscriber"] == "1"
 
-	// This is the channel owner
-	if "#"+sender == channel {
-		if text == "!leave" {
-			if err := s.q.DeleteChannel(ctx, channel); nil != err {
-				return "Failed to leave channel", true
-			}
+	strs := strings.SplitN(text, " ", 2)
 
-			go func() {
-				time.Sleep(1 * time.Second)
-				s.irc.Part(channel)
-			}()
-			return "Bye bye 👋", true
+	if isAdmin && strs[0] == "!ban" {
+		if len(strs) != 2 {
+			return "syntax: !ban user", true
 		}
+
+		if err := s.q.BanUser(ctx, strs[1]); nil != err {
+			return "failed to ban user", true
+		}
+
+		if err := s.OnChannels(ctx, func(channel string) {
+			s.irc.Say(channel, "/ban "+strs[1])
+		}); nil != err {
+			log.Println(err)
+		}
+		return "", false
 	}
 
-	if text == "!join" {
-		if err := s.q.CreateChannel(ctx, "#"+sender); nil != err {
+	switch strs[0] {
+	case "!leave":
+		if err := s.q.DeleteChannel(ctx, "#"+e.Channel); nil != err {
+			return "failed to leave channel", true
+		}
+
+		go func() {
+			time.Sleep(1 * time.Second)
+			s.irc.Depart(e.User.Name)
+		}()
+		return "Bye bye " + e.User.Name + "👋", true
+	case "!join":
+		if err := s.q.CreateChannel(ctx, "#"+e.User.Name); nil != err {
 			log.Println("unable to insert channel:", err)
 			return "unable to join channel", true
 		}
 
-		s.irc.Join("#" + sender)
-		s.irc.Privmsg("#"+sender, "Hi 🙋")
-		return "I will be in #" + sender + " in just a moment", true
-	}
-
-	strs := strings.SplitN(text, " ", 2)
-
-	if strs[0] == "!cmd" {
+		s.irc.Join(e.User.Name)
+		return "Hi " + e.User.Name + " 👋", true
+	case "!cmd":
 		if len(strs) == 1 {
 			return "!cmd set|list|functions|variables", true
 		}
 
 		strs = strings.SplitN(strs[1], " ", 2)
 		if strs[0] == "list" {
-			commands, err := s.q.GetCommands(ctx, channel)
+			commands, err := s.q.GetCommands(ctx, "#"+e.Channel)
 			if nil != err && err != sql.ErrNoRows {
-				log.Println("unable to get commands", channel, err)
+				log.Println("unable to get commands", e.Channel, err)
 				return "unable to get commands", true
 			} else if err == sql.ErrNoRows {
 				return "no commands set", true
@@ -154,11 +157,11 @@ func (s *Server) handleCommand(ctx context.Context, channel string, e *ircevent.
 					return "!cmd show command", true
 				}
 				tmpl, err := s.q.GetCommand(ctx, db.GetCommandParams{
-					ChannelName: channel,
+					ChannelName: "#" + e.Channel,
 					Name:        strs[1],
 				})
 				if nil != err {
-					log.Println("unable to get command", channel, strs[1], err)
+					log.Println("unable to get command", e.Channel, strs[1], err)
 				}
 				return strs[1] + ": " + tmpl, true
 			}
@@ -181,7 +184,7 @@ func (s *Server) handleCommand(ctx context.Context, channel string, e *ircevent.
 
 					if tmpl == "" {
 						if err := s.q.DeleteCommand(ctx, db.DeleteCommandParams{
-							ChannelName: channel,
+							ChannelName: "#" + e.Channel,
 							Name:        name,
 						}); nil != err {
 							log.Println("unable to delete command", name, err)
@@ -190,7 +193,7 @@ func (s *Server) handleCommand(ctx context.Context, channel string, e *ircevent.
 						continue
 					}
 					if err := s.q.SetCommand(ctx, db.SetCommandParams{
-						ChannelName: channel,
+						ChannelName: "#" + e.Channel,
 						Name:        name,
 						Template:    tmpl,
 					}); nil != err {
@@ -211,7 +214,7 @@ func (s *Server) handleCommand(ctx context.Context, channel string, e *ircevent.
 	} else {
 		var err error
 		commands, err := s.q.GetMatchingCommands(ctx, db.GetMatchingCommandsParams{
-			ChannelName: channel,
+			ChannelName: "#" + e.Channel,
 			Message:     strings.ToLower(text),
 		})
 		if nil != err && err != sql.ErrNoRows {
@@ -244,14 +247,14 @@ func (s *Server) handleCommand(ctx context.Context, channel string, e *ircevent.
 	if tmplStr != "" {
 		variables := strings.Split(text, " ")[1:]
 		data := Data{
-			Channel:   strings.TrimPrefix(channel, "#"),
+			Channel:   e.Channel,
 			IsMod:     isMod,
-			IsOwner:   "#"+e.Nick == channel,
+			IsOwner:   e.User.Name == e.Channel,
 			IsSub:     isSub,
-			MessageID: e.Tags["id"],
-			User:      sender,
-			ChannelID: e.Tags["room-id"],
-			UserID:    e.Tags["user-id"],
+			MessageID: e.ID,
+			User:      e.User.Name,
+			ChannelID: e.RoomID,
+			UserID:    e.User.ID,
 			BotName:   s.env.twitchUsername,
 			Command:   command,
 			Arg:       variables,
@@ -280,9 +283,8 @@ func splitRecursive(str string) []string {
 	return append([]string{string(str[0:480] + "…")}, splitRecursive(str[480:])...)
 }
 
-func (s *Server) handleMessage(e *ircevent.Event) {
-	channel := e.Arguments[0]
-	if s.env.twitchUsername == e.Nick {
+func (s *Server) handleMessage(e irc.PrivateMessage) {
+	if s.env.twitchUsername == e.User.Name {
 		return
 	}
 
@@ -290,38 +292,36 @@ func (s *Server) handleMessage(e *ircevent.Event) {
 	defer cancel()
 
 	if err := s.q.CreateUser(ctx, db.CreateUserParams{
-		ChannelName: channel,
-		Sender:      e.Nick,
+		ChannelName: e.Channel,
+		Sender:      e.User.Name,
 	}); nil != err {
 		log.Println("unable to create user", err)
 	}
 
 	if err := s.q.UpdateMetrics(ctx, db.UpdateMetricsParams{
-		ChannelName: channel,
-		Sender:      e.Nick,
-		WordCount:   int64(len(strings.Split(e.Message(), " "))),
+		ChannelName: e.Channel,
+		Sender:      e.User.Name,
+		WordCount:   int64(len(strings.Split(e.Message, " "))),
 	}); nil != err {
 		log.Println("unable to update metrics for user", err)
 	}
 
 	if err := s.q.CreateMessage(ctx, db.CreateMessageParams{
-		ChannelName: channel,
-		Sender:      e.Nick,
-		Message:     e.Message(),
+		ChannelName: e.Channel,
+		Sender:      e.User.Name,
+		Message:     e.Message,
 	}); nil != err {
 		log.Println("unable to add message", err)
 	}
 
-	res, _ := s.handleCommand(ctx, channel, e)
-	log.Printf("%v:%v:%v < %v\n", channel, e.Nick, e.Message(), res)
+	res, _ := s.handleCommand(ctx, &e)
+	log.Printf("%v:%v:%v < %v\n", e.Channel, e.User.Name, e.Message, res)
 	res = strings.TrimSpace(res)
 	if "" == res {
 		return
 	}
+
 	for _, msg := range splitRecursive(res) {
-		s.send <- Message{
-			Channel: channel,
-			Body:    msg,
-		}
+		s.irc.Say(e.Channel, msg)
 	}
 }
