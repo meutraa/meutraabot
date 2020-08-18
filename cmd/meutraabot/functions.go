@@ -33,52 +33,33 @@ type Data struct {
 	Arg       []string
 }
 
-func FuncMap(client *helix.Client, e *ircevent.Event) template.FuncMap {
+func (s *Server) FuncMap(ctx context.Context, e *ircevent.Event) template.FuncMap {
 	channel := e.Arguments[0]
 	roomID := e.Tags["room-id"]
 
-	rankFunc := func(user string) string { return rank(channel, user) }
-	pointFunc := func(user string) string { return points(channel, user) }
-	activetimeFunc := func(user string) string { return activetime(channel, user) }
-	wordsFunc := func(user string) string { return words(channel, user) }
-	messagesFunc := func(user string) string { return messages(channel, user) }
-	counterFunc := func(name string) string { return counter(channel, name) }
-	getFunc := func(url string) string { return get(channel, url) }
-	jsonParseFunc := func(key, json string) string { return jsonparse(channel, key, json) }
-	topFunc := func(count string) string { return top(channel, count) }
-	uptimeFunc := func() string { return uptime(client, roomID) }
-	followageFunc := func(user string) string { return followage(client, roomID, user) }
-	incCounterFunc := func(name, change string) string { return incCounter(channel, name, change) }
-
 	return template.FuncMap{
-		"rank":       rankFunc,
-		"points":     pointFunc,
-		"activetime": activetimeFunc,
-		"words":      wordsFunc,
-		"messages":   messagesFunc,
-		"counter":    counterFunc,
-		"get":        getFunc,
-		"json":       jsonParseFunc,
-		"top":        topFunc,
-		"followage":  followageFunc,
-		"uptime":     uptimeFunc,
-		"incCounter": incCounterFunc,
+		"rank":       func(user string) string { return s.funcRank(ctx, channel, user) },
+		"points":     func(user string) string { return s.funcPoints(ctx, channel, user) },
+		"activetime": func(user string) string { return s.funcActivetime(ctx, channel, user) },
+		"words":      func(user string) string { return s.funcWords(ctx, channel, user) },
+		"messages":   func(user string) string { return s.funcMessages(ctx, channel, user) },
+		"counter":    func(name string) string { return s.funcCounter(ctx, channel, name) },
+		"get":        func(url string) string { return s.funcGet(ctx, channel, url) },
+		"json":       func(key, json string) string { return s.funcJsonParse(channel, key, json) },
+		"top":        func(count string) string { return s.funcTop(ctx, channel, count) },
+		"followage":  func(user string) string { return s.funcFollowage(roomID, user) },
+		"uptime":     func() string { return s.funcUptime(roomID) },
+		"incCounter": func(name, change string) string { return s.funcIncCounter(ctx, channel, name, change) },
 	}
 }
 
-// case "!emoji":
-// 	return emojiHandler(c, channel, sender, text)
-
-func top(channel, count string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
-	defer cancel()
-
+func (s *Server) funcTop(ctx context.Context, channel, count string) string {
 	var c int32 = 5
 	cnt, err := strconv.ParseInt(count, 10, 32)
 	if nil == err {
 		c = int32(cnt)
 	}
-	top, err := q.GetTopWatchers(ctx, db.GetTopWatchersParams{
+	top, err := s.q.GetTopWatchers(ctx, db.GetTopWatchersParams{
 		ChannelName: channel,
 		Limit:       c,
 	})
@@ -90,8 +71,8 @@ func top(channel, count string) string {
 	return strings.Join(top, ", ")
 }
 
-func uptime(client *helix.Client, channelID string) string {
-	resp, err := client.GetStreams(&helix.StreamsParams{
+func (s *Server) funcUptime(channelID string) string {
+	resp, err := s.twitch.GetStreams(&helix.StreamsParams{
 		First:   1,
 		UserIDs: []string{channelID},
 	})
@@ -126,12 +107,12 @@ func User(client *helix.Client, user string) (helix.User, error) {
 	return resp.Data.Users[0], nil
 }
 
-func followage(client *helix.Client, channelID, user string) string {
-	u, err := User(client, user)
+func (s *Server) funcFollowage(channelID, user string) string {
+	u, err := User(s.twitch, user)
 	if nil != err {
 		return "can not find user " + user
 	}
-	resp, err := client.GetUsersFollows(&helix.UsersFollowsParams{
+	resp, err := s.twitch.GetUsersFollows(&helix.UsersFollowsParams{
 		First:  1,
 		FromID: u.ID,
 		ToID:   channelID,
@@ -150,7 +131,7 @@ func followage(client *helix.Client, channelID, user string) string {
 	return durafmt.Parse(time.Now().Sub(start)).LimitFirstN(2).String()
 }
 
-func incCounter(channel, name string, change string) string {
+func (s *Server) funcIncCounter(ctx context.Context, channel, name string, change string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
 	defer cancel()
 
@@ -159,7 +140,7 @@ func incCounter(channel, name string, change string) string {
 		log.Println("unable to parse change count", err)
 	}
 
-	if err := q.UpdateCounter(ctx, db.UpdateCounterParams{
+	if err := s.q.UpdateCounter(ctx, db.UpdateCounterParams{
 		ChannelName: channel,
 		Name:        strings.ToLower(name),
 		Value:       count,
@@ -169,10 +150,8 @@ func incCounter(channel, name string, change string) string {
 	return ""
 }
 
-func counter(channel, name string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
-	defer cancel()
-	value, err := q.GetCounter(ctx, db.GetCounterParams{
+func (s *Server) funcCounter(ctx context.Context, channel, name string) string {
+	value, err := s.q.GetCounter(ctx, db.GetCounterParams{
 		ChannelName: channel,
 		Name:        strings.ToLower(name),
 	})
@@ -183,17 +162,15 @@ func counter(channel, name string) string {
 	return strconv.FormatInt(value, 10)
 }
 
-func get(channel, url string) string {
-	client := &http.Client{
-		Timeout: 2 * time.Second,
-	}
+func (s *Server) funcGet(ctx context.Context, channel, url string) string {
 	req, err := http.NewRequest("GET", url, nil)
 	if nil != err {
 		log.Println("unable to create request for", url, err)
 		return ""
 	}
+	req = req.WithContext(ctx)
 	req.Header.Add("Accept", "text/plain")
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("unable to get url", channel, url, err)
 		return ""
@@ -209,7 +186,7 @@ func get(channel, url string) string {
 	return str
 }
 
-func jsonparse(channel, key, str string) string {
+func (s *Server) funcJsonParse(channel, key, str string) string {
 	m := map[string]interface{}{}
 	if err := json.Unmarshal([]byte(str), &m); err != nil {
 		log.Println("unable to unmarshal", err)
@@ -223,10 +200,10 @@ func jsonparse(channel, key, str string) string {
 	return string(data)
 }
 
-func metrics(channel, user string, onMetrics func(db.GetMetricsRow) string) string {
+func (s *Server) metrics(ctx context.Context, channel, user string, onMetrics func(db.GetMetricsRow) string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
 	defer cancel()
-	metrics, err := q.GetMetrics(ctx, db.GetMetricsParams{
+	metrics, err := s.q.GetMetrics(ctx, db.GetMetricsParams{
 		ChannelName: channel,
 		Sender:      strings.ToLower(user),
 	})
@@ -237,35 +214,32 @@ func metrics(channel, user string, onMetrics func(db.GetMetricsRow) string) stri
 	return onMetrics(metrics)
 }
 
-func points(channel, user string) string {
-	return metrics(channel, user, func(m db.GetMetricsRow) string {
+func (s *Server) funcPoints(ctx context.Context, channel, user string) string {
+	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
 		return strconv.FormatInt(m.WatchTime/60+(m.WordCount/8), 10)
 	})
 }
 
-func words(channel, user string) string {
-	return metrics(channel, user, func(m db.GetMetricsRow) string {
+func (s *Server) funcWords(ctx context.Context, channel, user string) string {
+	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
 		return strconv.FormatInt(m.WordCount, 10)
 	})
 }
 
-func activetime(channel, user string) string {
-	return metrics(channel, user, func(m db.GetMetricsRow) string {
+func (s *Server) funcActivetime(ctx context.Context, channel, user string) string {
+	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
 		return fmt.Sprintf("%v", time.Duration(m.WatchTime*1000000000))
 	})
 }
 
-func messages(channel, user string) string {
-	return metrics(channel, user, func(m db.GetMetricsRow) string {
+func (s *Server) funcMessages(ctx context.Context, channel, user string) string {
+	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
 		return strconv.FormatInt(m.MessageCount, 10)
 	})
 }
 
-func rank(channel, user string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
-	defer cancel()
-
-	rank, err := q.GetWatchTimeRank(ctx, db.GetWatchTimeRankParams{
+func (s *Server) funcRank(ctx context.Context, channel, user string) string {
+	rank, err := s.q.GetWatchTimeRank(ctx, db.GetWatchTimeRankParams{
 		ChannelName: channel,
 		Sender:      strings.ToLower(user),
 	})

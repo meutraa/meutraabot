@@ -19,7 +19,7 @@ type DeleteCommandParams struct {
 }
 
 func (q *Queries) DeleteCommand(ctx context.Context, arg DeleteCommandParams) error {
-	_, err := q.db.ExecContext(ctx, deleteCommand, arg.ChannelName, arg.Name)
+	_, err := q.exec(ctx, q.deleteCommandStmt, deleteCommand, arg.ChannelName, arg.Name)
 	return err
 }
 
@@ -36,7 +36,7 @@ type GetCommandParams struct {
 }
 
 func (q *Queries) GetCommand(ctx context.Context, arg GetCommandParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getCommand, arg.ChannelName, arg.Name)
+	row := q.queryRow(ctx, q.getCommandStmt, getCommand, arg.ChannelName, arg.Name)
 	var template string
 	err := row.Scan(&template)
 	return template, err
@@ -50,7 +50,7 @@ SELECT name
 `
 
 func (q *Queries) GetCommands(ctx context.Context, channelName string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, getCommands, channelName)
+	rows, err := q.query(ctx, q.getCommandsStmt, getCommands, channelName)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ type GetMatchingCommandsRow struct {
 }
 
 func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingCommandsParams) ([]GetMatchingCommandsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getMatchingCommands, arg.Message, arg.ChannelName)
+	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, arg.Message, arg.ChannelName)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +127,6 @@ type SetCommandParams struct {
 }
 
 func (q *Queries) SetCommand(ctx context.Context, arg SetCommandParams) error {
-	_, err := q.db.ExecContext(ctx, setCommand, arg.ChannelName, arg.Name, arg.Template)
+	_, err := q.exec(ctx, q.setCommandStmt, setCommand, arg.ChannelName, arg.Name, arg.Template)
 	return err
 }

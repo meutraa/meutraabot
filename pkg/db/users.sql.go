@@ -5,24 +5,22 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 const createUser = `-- name: CreateUser :exec
 INSERT INTO users
-  (channel_name, sender, created_at, message_count, word_count, watch_time, text_color)
-  VALUES ($1, $2, NOW(), 0, 0, 0, $3)
+  (channel_name, sender, created_at, message_count, word_count, watch_time)
+  VALUES ($1, $2, NOW(), 0, 0, 0)
   ON CONFLICT DO NOTHING
 `
 
 type CreateUserParams struct {
 	ChannelName string
 	Sender      string
-	TextColor   sql.NullString
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
-	_, err := q.db.ExecContext(ctx, createUser, arg.ChannelName, arg.Sender, arg.TextColor)
+	_, err := q.exec(ctx, q.createUserStmt, createUser, arg.ChannelName, arg.Sender)
 	return err
 }
 
@@ -48,7 +46,7 @@ type GetMetricsRow struct {
 }
 
 func (q *Queries) GetMetrics(ctx context.Context, arg GetMetricsParams) (GetMetricsRow, error) {
-	row := q.db.QueryRowContext(ctx, getMetrics, arg.ChannelName, arg.Sender)
+	row := q.queryRow(ctx, q.getMetricsStmt, getMetrics, arg.ChannelName, arg.Sender)
 	var i GetMetricsRow
 	err := row.Scan(&i.WatchTime, &i.MessageCount, &i.WordCount)
 	return i, err
@@ -69,7 +67,7 @@ type GetTopWatchersParams struct {
 }
 
 func (q *Queries) GetTopWatchers(ctx context.Context, arg GetTopWatchersParams) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, getTopWatchers, arg.ChannelName, arg.Limit)
+	rows, err := q.query(ctx, q.getTopWatchersStmt, getTopWatchers, arg.ChannelName, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -110,28 +108,10 @@ type GetWatchTimeRankParams struct {
 }
 
 func (q *Queries) GetWatchTimeRank(ctx context.Context, arg GetWatchTimeRankParams) (int32, error) {
-	row := q.db.QueryRowContext(ctx, getWatchTimeRank, arg.ChannelName, arg.Sender)
+	row := q.queryRow(ctx, q.getWatchTimeRankStmt, getWatchTimeRank, arg.ChannelName, arg.Sender)
 	var rank int32
 	err := row.Scan(&rank)
 	return rank, err
-}
-
-const updateEmoji = `-- name: UpdateEmoji :exec
-UPDATE users
-  SET emoji = $3
-  WHERE channel_name = $1
-  AND sender = $2
-`
-
-type UpdateEmojiParams struct {
-	ChannelName string
-	Sender      string
-	Emoji       sql.NullString
-}
-
-func (q *Queries) UpdateEmoji(ctx context.Context, arg UpdateEmojiParams) error {
-	_, err := q.db.ExecContext(ctx, updateEmoji, arg.ChannelName, arg.Sender, arg.Emoji)
-	return err
 }
 
 const updateMetrics = `-- name: UpdateMetrics :exec
@@ -156,6 +136,6 @@ type UpdateMetricsParams struct {
 }
 
 func (q *Queries) UpdateMetrics(ctx context.Context, arg UpdateMetricsParams) error {
-	_, err := q.db.ExecContext(ctx, updateMetrics, arg.ChannelName, arg.Sender, arg.WordCount)
+	_, err := q.exec(ctx, q.updateMetricsStmt, updateMetrics, arg.ChannelName, arg.Sender, arg.WordCount)
 	return err
 }

@@ -5,6 +5,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 type DBTX interface {
@@ -18,12 +19,218 @@ func New(db DBTX) *Queries {
 	return &Queries{db: db}
 }
 
+func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
+	q := Queries{db: db}
+	var err error
+	if q.createChannelStmt, err = db.PrepareContext(ctx, createChannel); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateChannel: %w", err)
+	}
+	if q.createMessageStmt, err = db.PrepareContext(ctx, createMessage); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateMessage: %w", err)
+	}
+	if q.createUserStmt, err = db.PrepareContext(ctx, createUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateUser: %w", err)
+	}
+	if q.deleteChannelStmt, err = db.PrepareContext(ctx, deleteChannel); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteChannel: %w", err)
+	}
+	if q.deleteCommandStmt, err = db.PrepareContext(ctx, deleteCommand); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteCommand: %w", err)
+	}
+	if q.getChannelNamesStmt, err = db.PrepareContext(ctx, getChannelNames); err != nil {
+		return nil, fmt.Errorf("error preparing query GetChannelNames: %w", err)
+	}
+	if q.getCommandStmt, err = db.PrepareContext(ctx, getCommand); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCommand: %w", err)
+	}
+	if q.getCommandsStmt, err = db.PrepareContext(ctx, getCommands); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCommands: %w", err)
+	}
+	if q.getCounterStmt, err = db.PrepareContext(ctx, getCounter); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCounter: %w", err)
+	}
+	if q.getMatchingCommandsStmt, err = db.PrepareContext(ctx, getMatchingCommands); err != nil {
+		return nil, fmt.Errorf("error preparing query GetMatchingCommands: %w", err)
+	}
+	if q.getMetricsStmt, err = db.PrepareContext(ctx, getMetrics); err != nil {
+		return nil, fmt.Errorf("error preparing query GetMetrics: %w", err)
+	}
+	if q.getTopWatchersStmt, err = db.PrepareContext(ctx, getTopWatchers); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTopWatchers: %w", err)
+	}
+	if q.getWatchTimeRankStmt, err = db.PrepareContext(ctx, getWatchTimeRank); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWatchTimeRank: %w", err)
+	}
+	if q.setCommandStmt, err = db.PrepareContext(ctx, setCommand); err != nil {
+		return nil, fmt.Errorf("error preparing query SetCommand: %w", err)
+	}
+	if q.updateCounterStmt, err = db.PrepareContext(ctx, updateCounter); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateCounter: %w", err)
+	}
+	if q.updateMetricsStmt, err = db.PrepareContext(ctx, updateMetrics); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateMetrics: %w", err)
+	}
+	return &q, nil
+}
+
+func (q *Queries) Close() error {
+	var err error
+	if q.createChannelStmt != nil {
+		if cerr := q.createChannelStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createChannelStmt: %w", cerr)
+		}
+	}
+	if q.createMessageStmt != nil {
+		if cerr := q.createMessageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createMessageStmt: %w", cerr)
+		}
+	}
+	if q.createUserStmt != nil {
+		if cerr := q.createUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createUserStmt: %w", cerr)
+		}
+	}
+	if q.deleteChannelStmt != nil {
+		if cerr := q.deleteChannelStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteChannelStmt: %w", cerr)
+		}
+	}
+	if q.deleteCommandStmt != nil {
+		if cerr := q.deleteCommandStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteCommandStmt: %w", cerr)
+		}
+	}
+	if q.getChannelNamesStmt != nil {
+		if cerr := q.getChannelNamesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getChannelNamesStmt: %w", cerr)
+		}
+	}
+	if q.getCommandStmt != nil {
+		if cerr := q.getCommandStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCommandStmt: %w", cerr)
+		}
+	}
+	if q.getCommandsStmt != nil {
+		if cerr := q.getCommandsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCommandsStmt: %w", cerr)
+		}
+	}
+	if q.getCounterStmt != nil {
+		if cerr := q.getCounterStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCounterStmt: %w", cerr)
+		}
+	}
+	if q.getMatchingCommandsStmt != nil {
+		if cerr := q.getMatchingCommandsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getMatchingCommandsStmt: %w", cerr)
+		}
+	}
+	if q.getMetricsStmt != nil {
+		if cerr := q.getMetricsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getMetricsStmt: %w", cerr)
+		}
+	}
+	if q.getTopWatchersStmt != nil {
+		if cerr := q.getTopWatchersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTopWatchersStmt: %w", cerr)
+		}
+	}
+	if q.getWatchTimeRankStmt != nil {
+		if cerr := q.getWatchTimeRankStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWatchTimeRankStmt: %w", cerr)
+		}
+	}
+	if q.setCommandStmt != nil {
+		if cerr := q.setCommandStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setCommandStmt: %w", cerr)
+		}
+	}
+	if q.updateCounterStmt != nil {
+		if cerr := q.updateCounterStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateCounterStmt: %w", cerr)
+		}
+	}
+	if q.updateMetricsStmt != nil {
+		if cerr := q.updateMetricsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateMetricsStmt: %w", cerr)
+		}
+	}
+	return err
+}
+
+func (q *Queries) exec(ctx context.Context, stmt *sql.Stmt, query string, args ...interface{}) (sql.Result, error) {
+	switch {
+	case stmt != nil && q.tx != nil:
+		return q.tx.StmtContext(ctx, stmt).ExecContext(ctx, args...)
+	case stmt != nil:
+		return stmt.ExecContext(ctx, args...)
+	default:
+		return q.db.ExecContext(ctx, query, args...)
+	}
+}
+
+func (q *Queries) query(ctx context.Context, stmt *sql.Stmt, query string, args ...interface{}) (*sql.Rows, error) {
+	switch {
+	case stmt != nil && q.tx != nil:
+		return q.tx.StmtContext(ctx, stmt).QueryContext(ctx, args...)
+	case stmt != nil:
+		return stmt.QueryContext(ctx, args...)
+	default:
+		return q.db.QueryContext(ctx, query, args...)
+	}
+}
+
+func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, args ...interface{}) *sql.Row {
+	switch {
+	case stmt != nil && q.tx != nil:
+		return q.tx.StmtContext(ctx, stmt).QueryRowContext(ctx, args...)
+	case stmt != nil:
+		return stmt.QueryRowContext(ctx, args...)
+	default:
+		return q.db.QueryRowContext(ctx, query, args...)
+	}
+}
+
 type Queries struct {
-	db DBTX
+	db                      DBTX
+	tx                      *sql.Tx
+	createChannelStmt       *sql.Stmt
+	createMessageStmt       *sql.Stmt
+	createUserStmt          *sql.Stmt
+	deleteChannelStmt       *sql.Stmt
+	deleteCommandStmt       *sql.Stmt
+	getChannelNamesStmt     *sql.Stmt
+	getCommandStmt          *sql.Stmt
+	getCommandsStmt         *sql.Stmt
+	getCounterStmt          *sql.Stmt
+	getMatchingCommandsStmt *sql.Stmt
+	getMetricsStmt          *sql.Stmt
+	getTopWatchersStmt      *sql.Stmt
+	getWatchTimeRankStmt    *sql.Stmt
+	setCommandStmt          *sql.Stmt
+	updateCounterStmt       *sql.Stmt
+	updateMetricsStmt       *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db: tx,
+		db:                      tx,
+		tx:                      tx,
+		createChannelStmt:       q.createChannelStmt,
+		createMessageStmt:       q.createMessageStmt,
+		createUserStmt:          q.createUserStmt,
+		deleteChannelStmt:       q.deleteChannelStmt,
+		deleteCommandStmt:       q.deleteCommandStmt,
+		getChannelNamesStmt:     q.getChannelNamesStmt,
+		getCommandStmt:          q.getCommandStmt,
+		getCommandsStmt:         q.getCommandsStmt,
+		getCounterStmt:          q.getCounterStmt,
+		getMatchingCommandsStmt: q.getMatchingCommandsStmt,
+		getMetricsStmt:          q.getMetricsStmt,
+		getTopWatchersStmt:      q.getTopWatchersStmt,
+		getWatchTimeRankStmt:    q.getWatchTimeRankStmt,
+		setCommandStmt:          q.setCommandStmt,
+		updateCounterStmt:       q.updateCounterStmt,
+		updateMetricsStmt:       q.updateMetricsStmt,
 	}
 }

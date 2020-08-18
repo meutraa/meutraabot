@@ -29,9 +29,7 @@ CREATE TABLE users (
   updated_at timestamp with time zone,
   word_count bigint NOT NULL,
   message_count bigint NOT NULL,
-  watch_time bigint NOT NULL,
-  emoji text,
-  text_color text
+  watch_time bigint NOT NULL
 );
 
 ALTER TABLE users ADD CONSTRAINT user_pkey PRIMARY KEY (channel_name, sender);
@@ -45,4 +43,3 @@ CREATE TABLE messages (
 );
 
 ALTER TABLE messages ADD CONSTRAINT message_pkey PRIMARY KEY (id);
--- ALTER TABLE messages ADD CONSTRAINT messages_fkey FOREIGN KEY (channel_name, sender) REFERENCES users(channel_name, sender);

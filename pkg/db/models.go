@@ -41,6 +41,4 @@ type User struct {
 	WordCount    int64
 	MessageCount int64
 	WatchTime    int64
-	Emoji        sql.NullString
-	TextColor    sql.NullString
 }

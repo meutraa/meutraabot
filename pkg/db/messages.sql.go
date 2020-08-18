@@ -21,6 +21,6 @@ type CreateMessageParams struct {
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) error {
-	_, err := q.db.ExecContext(ctx, createMessage, arg.ChannelName, arg.Sender, arg.Message)
+	_, err := q.exec(ctx, q.createMessageStmt, createMessage, arg.ChannelName, arg.Sender, arg.Message)
 	return err
 }

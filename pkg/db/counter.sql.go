@@ -19,7 +19,7 @@ type GetCounterParams struct {
 }
 
 func (q *Queries) GetCounter(ctx context.Context, arg GetCounterParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getCounter, arg.ChannelName, arg.Name)
+	row := q.queryRow(ctx, q.getCounterStmt, getCounter, arg.ChannelName, arg.Name)
 	var value int64
 	err := row.Scan(&value)
 	return value, err
@@ -40,6 +40,6 @@ type UpdateCounterParams struct {
 }
 
 func (q *Queries) UpdateCounter(ctx context.Context, arg UpdateCounterParams) error {
-	_, err := q.db.ExecContext(ctx, updateCounter, arg.ChannelName, arg.Name, arg.Value)
+	_, err := q.exec(ctx, q.updateCounterStmt, updateCounter, arg.ChannelName, arg.Name, arg.Value)
 	return err
 }

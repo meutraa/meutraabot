@@ -14,7 +14,7 @@ INSERT INTO channels (channel_name, created_at)
 `
 
 func (q *Queries) CreateChannel(ctx context.Context, channelName string) error {
-	_, err := q.db.ExecContext(ctx, createChannel, channelName)
+	_, err := q.exec(ctx, q.createChannelStmt, createChannel, channelName)
 	return err
 }
 
@@ -24,7 +24,7 @@ DELETE FROM channels
 `
 
 func (q *Queries) DeleteChannel(ctx context.Context, channelName string) error {
-	_, err := q.db.ExecContext(ctx, deleteChannel, channelName)
+	_, err := q.exec(ctx, q.deleteChannelStmt, deleteChannel, channelName)
 	return err
 }
 
@@ -33,7 +33,7 @@ SELECT channel_name FROM channels
 `
 
 func (q *Queries) GetChannelNames(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, getChannelNames)
+	rows, err := q.query(ctx, q.getChannelNamesStmt, getChannelNames)
 	if err != nil {
 		return nil, err
 	}

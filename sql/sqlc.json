@@ -4,7 +4,7 @@
       {
       "name": "db",
       "emit_json_tags": false,
-      "emit_prepared_queries": false,
+      "emit_prepared_queries": true,
       "path": "../pkg/db",
       "queries": "queries/",
       "schema": "schema.sql"

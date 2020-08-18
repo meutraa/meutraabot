@@ -18,12 +18,6 @@ SELECT
   ORDER BY watch_time DESC
   LIMIT $2;
 
--- name: UpdateEmoji :exec
-UPDATE users
-  SET emoji = $3
-  WHERE channel_name = $1
-  AND sender = $2;
-
 -- name: GetMetrics :one
 SELECT
   watch_time,
@@ -35,8 +29,8 @@ SELECT
 
 -- name: CreateUser :exec
 INSERT INTO users
-  (channel_name, sender, created_at, message_count, word_count, watch_time, text_color)
-  VALUES ($1, $2, NOW(), 0, 0, 0, $3)
+  (channel_name, sender, created_at, message_count, word_count, watch_time)
+  VALUES ($1, $2, NOW(), 0, 0, 0)
   ON CONFLICT DO NOTHING;
 
 -- name: UpdateMetrics :exec
