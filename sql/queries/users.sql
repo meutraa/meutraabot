@@ -10,19 +10,42 @@ SELECT
   ) AS ss
   WHERE sender = $2;
 
+-- name: GetWatchTimeRankAverage :one
+SELECT
+  cast(rank AS INTEGER)
+  FROM
+    (SELECT
+      RANK() OVER (ORDER BY (watch_time / extract(epoch from (NOW() - created_at))) DESC) AS rank,
+      sender
+      FROM users
+      WHERE channel_name = $1
+  ) AS ss
+  WHERE sender = $2;
+
 -- name: GetTopWatchers :many
 SELECT
   sender
   FROM users
   WHERE channel_name = $1
-  ORDER BY watch_time DESC
+  ORDER BY ((watch_time/60) + (word_count / 8)) DESC
+  LIMIT $2;
+
+-- name: GetTopWatchersAverage :many
+SELECT
+  sender
+  FROM users
+  WHERE channel_name = $1
+  ORDER BY (((watch_time/60) + (word_count / 8)) / extract(epoch from (NOW() - created_at))) DESC
   LIMIT $2;
 
 -- name: GetMetrics :one
 SELECT
   watch_time,
   message_count,
-  word_count
+  word_count,
+  extract(epoch from (NOW() - created_at)) as age,
+  (watch_time/60) + (word_count / 8) as points,
+  created_at
   FROM users
   WHERE channel_name = $1
   AND sender = $2;

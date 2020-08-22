@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,46 +21,70 @@ import (
 )
 
 type Data struct {
-	User      string
-	UserID    string
-	Channel   string
-	ChannelID string
-	MessageID string
-	IsMod     bool
-	IsOwner   bool
-	IsSub     bool
-	BotName   string
-	Command   string
-	Arg       []string
+	User         string   `json:".User"`
+	UserID       string   `json:".UserID"`
+	Channel      string   `json:".Channel"`
+	ChannelID    string   `json:".ChannelID"`
+	MessageID    string   `json:".MessageID"`
+	IsMod        bool     `json:".IsMod"`
+	IsOwner      bool     `json:".IsOwner"`
+	IsSub        bool     `json:".IsSub"`
+	BotName      string   `json:".BotName"`
+	Command      string   `json:".Command"`
+	Arg          []string `json:".Arg"`
+	SelectedUser string   `json:".SelectedUser"`
 }
 
-func (s *Server) FuncMap(ctx context.Context, e *irc.PrivateMessage) template.FuncMap {
+func pick(fallback string, values []string) string {
+	for _, v := range values {
+		if "" != v {
+			return v
+		}
+	}
+	return fallback
+}
+
+func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) template.FuncMap {
 	return template.FuncMap{
-		"rank":       func(user string) string { return s.funcRank(ctx, e.Channel, user) },
-		"points":     func(user string) string { return s.funcPoints(ctx, e.Channel, user) },
-		"activetime": func(user string) string { return s.funcActivetime(ctx, e.Channel, user) },
-		"words":      func(user string) string { return s.funcWords(ctx, e.Channel, user) },
-		"messages":   func(user string) string { return s.funcMessages(ctx, e.Channel, user) },
-		"counter":    func(name string) string { return s.funcCounter(ctx, e.Channel, name) },
-		"get":        func(url string) string { return s.funcGet(ctx, e.Channel, url) },
-		"json":       func(key, json string) string { return s.funcJsonParse(e.Channel, key, json) },
-		"top":        func(count string) string { return s.funcTop(ctx, e.Channel, count) },
-		"followage":  func(user string) string { return s.funcFollowage(e.RoomID, user) },
-		"uptime":     func() string { return s.funcUptime(e.RoomID) },
-		"incCounter": func(name, change string) string { return s.funcIncCounter(ctx, e.Channel, name, change) },
+		"rank":               func() string { return s.funcRank(ctx, e.Channel, d.SelectedUser, true) },
+		"rank_alltime":       func() string { return s.funcRank(ctx, e.Channel, d.SelectedUser, false) },
+		"points":             func() string { return s.funcPoints(ctx, e.Channel, d.SelectedUser, true) },
+		"points_alltime":     func() string { return s.funcPoints(ctx, e.Channel, d.SelectedUser, false) },
+		"activetime":         func() string { return s.funcActivetime(ctx, e.Channel, d.SelectedUser, false) },
+		"activetime_average": func() string { return s.funcActivetime(ctx, e.Channel, d.SelectedUser, true) },
+		"words":              func() string { return s.funcWords(ctx, e.Channel, d.SelectedUser, false) },
+		"words_average":      func() string { return s.funcWords(ctx, e.Channel, d.SelectedUser, true) },
+		"messages":           func() string { return s.funcMessages(ctx, e.Channel, d.SelectedUser, false) },
+		"messages_average":   func() string { return s.funcMessages(ctx, e.Channel, d.SelectedUser, true) },
+		"counter":            func(name string) string { return s.funcCounter(ctx, e.Channel, name) },
+		"get":                func(url string) string { return s.funcGet(ctx, e.Channel, url) },
+		"json":               func(key, json string) string { return s.funcJsonParse(e.Channel, key, json) },
+		"top":                func() string { return s.funcTop(ctx, e.Channel, pick("5", d.Arg), true) },
+		"top_alltime":        func() string { return s.funcTop(ctx, e.Channel, pick("5", d.Arg), false) },
+		"followage":          func() string { return s.funcFollowage(e.RoomID, d.SelectedUser) },
+		"uptime":             func() string { return s.funcUptime(e.RoomID) },
+		"incCounter":         func(name, change string) string { return s.funcIncCounter(ctx, e.Channel, name, change) },
 	}
 }
 
-func (s *Server) funcTop(ctx context.Context, channel, count string) string {
+func (s *Server) funcTop(ctx context.Context, channel, count string, average bool) string {
 	var c int32 = 5
 	cnt, err := strconv.ParseInt(count, 10, 32)
 	if nil == err {
 		c = int32(cnt)
 	}
-	top, err := s.q.GetTopWatchers(ctx, db.GetTopWatchersParams{
-		ChannelName: "#" + channel,
-		Limit:       c,
-	})
+	var top []string
+	if !average {
+		top, err = s.q.GetTopWatchers(ctx, db.GetTopWatchersParams{
+			ChannelName: "#" + channel,
+			Limit:       c,
+		})
+	} else {
+		top, err = s.q.GetTopWatchersAverage(ctx, db.GetTopWatchersAverageParams{
+			ChannelName: "#" + channel,
+			Limit:       c,
+		})
+	}
 	if nil != err {
 		log.Println("unable to get top watchers", channel, err)
 		return ""
@@ -211,35 +236,63 @@ func (s *Server) metrics(ctx context.Context, channel, user string, onMetrics fu
 	return onMetrics(metrics)
 }
 
-func (s *Server) funcPoints(ctx context.Context, channel, user string) string {
+func (s *Server) funcPoints(ctx context.Context, channel, user string, average bool) string {
 	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
-		return strconv.FormatInt(m.WatchTime/60+(m.WordCount/8), 10)
+		points := int64(m.Points)
+		if average {
+			points *= 1000000
+			points = int64(math.Ceil(float64(points) / m.Age))
+		}
+		return strconv.FormatInt(points, 10)
 	})
 }
 
-func (s *Server) funcWords(ctx context.Context, channel, user string) string {
+func (s *Server) funcWords(ctx context.Context, channel, user string, average bool) string {
 	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
-		return strconv.FormatInt(m.WordCount, 10)
+		words := m.WordCount
+		if average {
+			words *= 1000000
+			words = int64(math.Ceil(float64(words) / m.Age))
+		}
+		return strconv.FormatInt(words, 10)
 	})
 }
 
-func (s *Server) funcActivetime(ctx context.Context, channel, user string) string {
+func (s *Server) funcActivetime(ctx context.Context, channel, user string, average bool) string {
 	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
-		return fmt.Sprintf("%v", time.Duration(m.WatchTime*1000000000))
+		watch := m.WatchTime * 1000000000
+		if average {
+			watch = int64(math.Ceil(float64(watch) / m.Age))
+		}
+		return fmt.Sprintf("%v", time.Duration(watch))
 	})
 }
 
-func (s *Server) funcMessages(ctx context.Context, channel, user string) string {
+func (s *Server) funcMessages(ctx context.Context, channel, user string, average bool) string {
 	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
-		return strconv.FormatInt(m.MessageCount, 10)
+		messages := m.MessageCount
+		if average {
+			messages *= 1000000
+			messages = int64(math.Ceil(float64(messages) / m.Age))
+		}
+		return strconv.FormatInt(messages, 10)
 	})
 }
 
-func (s *Server) funcRank(ctx context.Context, channel, user string) string {
-	rank, err := s.q.GetWatchTimeRank(ctx, db.GetWatchTimeRankParams{
-		ChannelName: "#" + channel,
-		Sender:      strings.ToLower(user),
-	})
+func (s *Server) funcRank(ctx context.Context, channel, user string, average bool) string {
+	var rank int32
+	var err error
+	if !average {
+		rank, err = s.q.GetWatchTimeRank(ctx, db.GetWatchTimeRankParams{
+			ChannelName: "#" + channel,
+			Sender:      strings.ToLower(user),
+		})
+	} else {
+		rank, err = s.q.GetWatchTimeRankAverage(ctx, db.GetWatchTimeRankAverageParams{
+			ChannelName: "#" + channel,
+			Sender:      strings.ToLower(user),
+		})
+	}
 	if nil != err {
 		log.Println("unable to get user rank", channel, user, err)
 		return ""

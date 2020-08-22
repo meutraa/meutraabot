@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
@@ -21,6 +22,8 @@ type Message struct {
 	Channel string
 	Body    string
 }
+
+const seperator = " "
 
 func main() {
 	if err := run(); err != nil {
@@ -57,226 +60,237 @@ func run() error {
 	return nil
 }
 
-func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) (string, bool) {
+func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) string {
 	text := e.Message
-	isAdmin := (e.User.Name == e.Channel) || e.User.Name == "meutraa"
+
+	isOwner := e.User.Name == "meutraa"
+	isAdmin := (e.User.Name == e.Channel) || isOwner
 	isMod := e.Tags["mod"] == "1" || isAdmin
 	isSub := e.Tags["subscriber"] == "1"
 
-	strs := strings.SplitN(text, " ", 2)
+	split := strings.Split(text, " ")
+	command := split[0]
+	args := split[1:]
+	argCount := len(args)
+	var tmplStr string
 
-	if isAdmin && strs[0] == "!ban" {
-		if len(strs) != 2 {
-			return "syntax: !ban user", true
-		}
+	data := Data{
+		Channel:      e.Channel,
+		IsMod:        isMod,
+		IsOwner:      e.User.Name == e.Channel,
+		IsSub:        isSub,
+		MessageID:    e.ID,
+		User:         e.User.Name,
+		ChannelID:    e.RoomID,
+		UserID:       e.User.ID,
+		BotName:      s.env.twitchUsername,
+		Command:      command,
+		Arg:          args,
+		SelectedUser: pick(e.User.Name, args),
+	}
+	functions := s.FuncMap(ctx, data, e)
 
-		if err := s.q.BanUser(ctx, strs[1]); nil != err {
-			return "failed to ban user", true
+	// Built-in commands
+	switch {
+	case command == "!ban" && isAdmin && argCount == 1:
+		if err := s.q.BanUser(ctx, args[0]); nil != err {
+			log.Println("unable to ban user", err)
+			return "failed to ban user"
 		}
 
 		if err := s.OnChannels(ctx, func(channel string) {
-			s.irc.Say(channel, "/ban "+strs[1])
+			s.irc.Say(channel, "/ban "+args[0])
 		}); nil != err {
 			log.Println(err)
 		}
-		return "", false
-	}
-
-	switch strs[0] {
-	case "!leave":
+		return ""
+	case command == "!leave":
 		if err := s.q.DeleteChannel(ctx, "#"+e.Channel); nil != err {
-			return "failed to leave channel", true
+			return "failed to leave channel"
 		}
 
 		go func() {
 			time.Sleep(1 * time.Second)
 			s.irc.Depart(e.User.Name)
 		}()
-		return "Bye bye " + e.User.Name + "👋", true
-	case "!join":
+		return "Bye bye " + e.User.Name + "👋"
+	case command == "!join":
 		if err := s.q.CreateChannel(ctx, "#"+e.User.Name); nil != err {
 			log.Println("unable to insert channel:", err)
-			return "unable to join channel", true
+			return "unable to join channel"
 		}
 
 		s.irc.Join(e.User.Name)
-		return "Hi " + e.User.Name + " 👋", true
-	case "!cmd":
-		if len(strs) == 1 {
-			return "!cmd set|list|functions|variables", true
+		return "Hi " + e.User.Name + " 👋"
+	case command == "!data":
+		bytes, _ := json.Marshal(data)
+		return string(bytes)
+	case command == "!glist":
+		commands, err := s.q.GetCommands(ctx, "#")
+		if nil != err && err != sql.ErrNoRows {
+			return "unable to get commands"
 		}
-
-		strs = strings.SplitN(strs[1], " ", 2)
-		if strs[0] == "list" {
-			commands, err := s.q.GetCommands(ctx, "#"+e.Channel)
-			if nil != err && err != sql.ErrNoRows {
-				log.Println("unable to get commands", e.Channel, err)
-				return "unable to get commands", true
-			} else if err == sql.ErrNoRows {
-				return "no commands set", true
-			}
-			return strings.Join(commands, ", "), true
+		return strings.Join(commands, seperator)
+	case command == "!list":
+		commands, err := s.q.GetCommands(ctx, "#"+e.Channel)
+		if nil != err && err != sql.ErrNoRows {
+			return "unable to get commands"
 		}
-
-		if strs[0] == "functions" {
-			return strings.Join([]string{
-				"rank(user string)",
-				"points(user string)",
-				"activetime(user string)",
-				"words(user string)",
-				"messages(user string)",
-				"counter(name string)",
-				"get(url string)",
-				"json(key string, json string)",
-				"top(count numeric string)",
-				"followage(user string)",
-				"uptime()",
-				"incCounter(name string, count numeric string)",
-			}, ", "), true
+		return strings.Join(commands, seperator)
+	case command == "!gget" && argCount == 1:
+		tmpl, err := s.q.GetCommand(ctx, db.GetCommandParams{
+			ChannelName: "#",
+			Name:        args[0],
+		})
+		if nil != err {
+			log.Println("unable to get global command", e.Channel, args[0], err)
+			return ""
 		}
-
-		if strs[0] == "variables" {
-			return strings.Join([]string{
-				".User",
-				".UserID",
-				".Channel",
-				".ChannelID",
-				".IsMod",
-				".IsOwner",
-				".IsSub",
-				".BotName",
-				".Command",
-				"index .Arg 0",
-				"index .Arg 1 (etc)",
-			}, ", "), true
+		return tmpl
+	case command == "!get" && argCount == 1:
+		tmpl, err := s.q.GetCommand(ctx, db.GetCommandParams{
+			ChannelName: "#" + e.Channel,
+			Name:        args[0],
+		})
+		if nil != err {
+			log.Println("unable to get command", e.Channel, args[0], err)
+			return ""
 		}
-
-		if isMod {
-			if strs[0] == "show" {
-				if len(strs) == 1 {
-					return "!cmd show command", true
-				}
-				tmpl, err := s.q.GetCommand(ctx, db.GetCommandParams{
-					ChannelName: "#" + e.Channel,
-					Name:        strs[1],
-				})
-				if nil != err {
-					log.Println("unable to get command", e.Channel, strs[1], err)
-				}
-				return strs[1] + ": " + tmpl, true
-			}
-
-			if strs[0] == "set" {
-				if len(strs) == 1 {
-					return "!cmd set command template", true
-				}
-
-				strs = strings.SplitN(strs[1], " ", 2)
-				tmpl := ""
-				if len(strs) > 1 {
-					tmpl = strs[1]
-				}
-
-				names := strings.Split(strs[0], ",")
-				for _, name := range names {
-					// Lowercase this for sanity
-					name = strings.ToLower(name)
-
-					if tmpl == "" {
-						if err := s.q.DeleteCommand(ctx, db.DeleteCommandParams{
-							ChannelName: "#" + e.Channel,
-							Name:        name,
-						}); nil != err {
-							log.Println("unable to delete command", name, err)
-							return "unable to delete command", true
-						}
-						continue
-					}
-					if err := s.q.SetCommand(ctx, db.SetCommandParams{
-						ChannelName: "#" + e.Channel,
-						Name:        name,
-						Template:    tmpl,
-					}); nil != err {
-						log.Println("unable to set command", name, tmpl, err)
-						return "unable to set command", true
-					}
-				}
-				return "command set", true
-			}
+		return tmpl
+	case command == "!builtins":
+		return strings.Join([]string{
+			"!leave",
+			"!ban",
+			"!join",
+			"!get",
+			"!set",
+			"!unset",
+			"!list",
+			"!gget",
+			"!gset",
+			"!gunset",
+			"!glist",
+			"!functions",
+			"!data",
+			"!test",
+			"!builtins",
+		}, seperator)
+	case command == "!functions":
+		return strings.Join([]string{
+			"rank(user string?)",
+			"points(user string?)",
+			"activetime(user string?)",
+			"words(user string?)",
+			"messages(user string?)",
+			"counter(name string)",
+			"get(url string)",
+			"json(key string, json string)",
+			"top(count numeric string)",
+			"followage(user string?)",
+			"uptime()",
+			"incCounter(name string, count numeric string)",
+		}, seperator)
+	case command == "!gunset" && isOwner && argCount == 1:
+		if err := s.q.DeleteCommand(ctx, db.DeleteCommandParams{
+			ChannelName: "#",
+			Name:        args[0],
+		}); nil != err {
+			log.Println("unable to delete global command", args[0], err)
+			return "unable to delete global command"
 		}
-	}
-
-	// Check to see if this matches a command
-	var tmplStr string
-	var command = strings.ToLower(strs[0])
-	if command == "!test" && isMod {
-		tmplStr = strs[1]
-	} else {
-		var err error
+	case command == "!unset" && isMod && argCount == 1:
+		if err := s.q.DeleteCommand(ctx, db.DeleteCommandParams{
+			ChannelName: "#" + e.Channel,
+			Name:        args[0],
+		}); nil != err {
+			log.Println("unable to delete command", args[0], err)
+			return "unable to delete command"
+		}
+	case command == "!gset" && isOwner && argCount > 1:
+		strs := strings.SplitN(text, " ", 3)[1:]
+		if err := s.q.SetCommand(ctx, db.SetCommandParams{
+			ChannelName: "#",
+			Name:        strs[0],
+			Template:    strs[1],
+		}); nil != err {
+			log.Println("unable to set global command", strs[0], strs[1], err)
+			return "unable to set global command"
+		}
+		return "command set"
+	case command == "!set" && isMod && argCount > 1:
+		strs := strings.SplitN(text, " ", 3)[1:]
+		if err := s.q.SetCommand(ctx, db.SetCommandParams{
+			ChannelName: "#" + e.Channel,
+			Name:        strs[0],
+			Template:    strs[1],
+		}); nil != err {
+			log.Println("unable to set command", strs[0], strs[1], err)
+			return "unable to set command"
+		}
+		return "command set"
+	case command == "!test" && isMod:
+		tmplStr = strings.Join(args, " ")
+	default:
 		commands, err := s.q.GetMatchingCommands(ctx, db.GetMatchingCommandsParams{
 			ChannelName: "#" + e.Channel,
 			Message:     strings.ToLower(text),
 		})
 		if nil != err && err != sql.ErrNoRows {
 			log.Println("unable to get command", err)
-			return "", false
+			return ""
 		}
 
-		matchingCommands := make([]db.GetMatchingCommandsRow, 0, len(commands))
+		local := make([]db.GetMatchingCommandsRow, 0, 8)
+		global := make([]db.GetMatchingCommandsRow, 0, 8)
 		for _, c := range commands {
-			if c.Match {
-				matchingCommands = append(matchingCommands, c)
+			if c.ChannelName != "#" {
+				local = append(local, c)
+			} else {
+				global = append(global, c)
 			}
 		}
 
-		if len(matchingCommands) > 1 {
-			commands := make([]string, len(matchingCommands))
-			for i, c := range matchingCommands {
-				commands[i] = c.Name
+		if len(local) > 1 {
+			cs := make([]string, len(local))
+			for i, c := range local {
+				cs[i] = c.Name
 			}
-			return "message matches multiple commands: " + strings.Join(commands, ", "), false
+			return "message matches multiple local commands: " + strings.Join(cs, seperator)
+		} else if len(local) == 1 {
+			tmplStr = local[0].Template
+		} else if len(global) > 1 {
+			cs := make([]string, len(global))
+			for i, c := range global {
+				cs[i] = c.Name
+			}
+			return "message matches multiple global commands: " + strings.Join(cs, seperator)
+		} else if len(global) == 1 {
+			tmplStr = global[0].Template
 		}
+	}
 
-		if len(matchingCommands) != 0 {
-			log.Println("matched", matchingCommands[0].Name)
-			tmplStr = matchingCommands[0].Template
-		}
+	if tmplStr == "" {
+		return ""
 	}
 
 	// Execute command
-	if tmplStr != "" {
-		variables := strings.Split(text, " ")[1:]
-		data := Data{
-			Channel:   e.Channel,
-			IsMod:     isMod,
-			IsOwner:   e.User.Name == e.Channel,
-			IsSub:     isSub,
-			MessageID: e.ID,
-			User:      e.User.Name,
-			ChannelID: e.RoomID,
-			UserID:    e.User.ID,
-			BotName:   s.env.twitchUsername,
-			Command:   command,
-			Arg:       variables,
-		}
-
-		tmpl, err := template.New(strs[0]).Funcs(s.FuncMap(ctx, e)).Parse(tmplStr)
-		if err != nil {
-			return "command template is broken: " + err.Error(), true
-		}
-
-		var out bytes.Buffer
-		if err := tmpl.Execute(&out, data); nil != err {
-			return "command executed wrongly: " + err.Error(), true
-		}
-
-		return out.String(), true
+	tmpl, err := template.New(text).Funcs(functions).Parse(tmplStr)
+	if err != nil {
+		return "command template is broken: " + err.Error()
 	}
 
-	return "", false
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, data); nil != err {
+		return "command executed wrongly: " + err.Error()
+	}
+
+	return out.String()
 }
 
 func splitRecursive(str string) []string {
+	if len(str) == 0 {
+		return []string{}
+	}
 	if len(str) <= 480 {
 		return []string{str}
 	}
@@ -314,14 +328,9 @@ func (s *Server) handleMessage(e irc.PrivateMessage) {
 		log.Println("unable to add message", err)
 	}
 
-	res, _ := s.handleCommand(ctx, &e)
+	res := s.handleCommand(ctx, &e)
 	log.Printf("%v:%v:%v < %v\n", e.Channel, e.User.Name, e.Message, res)
-	res = strings.TrimSpace(res)
-	if "" == res {
-		return
-	}
-
-	for _, msg := range splitRecursive(res) {
+	for _, msg := range splitRecursive(strings.TrimSpace(res)) {
 		s.irc.Say(e.Channel, msg)
 	}
 }

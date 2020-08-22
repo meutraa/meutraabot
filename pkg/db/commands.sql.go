@@ -73,24 +73,32 @@ func (q *Queries) GetCommands(ctx context.Context, channelName string) ([]string
 }
 
 const getMatchingCommands = `-- name: GetMatchingCommands :many
-SELECT template, name, ($1::text ~ name)::bool as Match
+SELECT
+    template,
+    name,
+    channel_name
   FROM commands
-  WHERE channel_name = $2
+  WHERE (
+    channel_name = $1
+    OR
+    channel_name = '#'
+  )
+  AND ($2::text ~ name)::bool
 `
 
 type GetMatchingCommandsParams struct {
-	Message     string
 	ChannelName string
+	Message     string
 }
 
 type GetMatchingCommandsRow struct {
-	Template string
-	Name     string
-	Match    bool
+	Template    string
+	Name        string
+	ChannelName string
 }
 
 func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingCommandsParams) ([]GetMatchingCommandsRow, error) {
-	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, arg.Message, arg.ChannelName)
+	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, arg.ChannelName, arg.Message)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +106,7 @@ func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingComman
 	var items []GetMatchingCommandsRow
 	for rows.Next() {
 		var i GetMatchingCommandsRow
-		if err := rows.Scan(&i.Template, &i.Name, &i.Match); err != nil {
+		if err := rows.Scan(&i.Template, &i.Name, &i.ChannelName); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

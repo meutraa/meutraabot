@@ -64,8 +64,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTopWatchersStmt, err = db.PrepareContext(ctx, getTopWatchers); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTopWatchers: %w", err)
 	}
+	if q.getTopWatchersAverageStmt, err = db.PrepareContext(ctx, getTopWatchersAverage); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTopWatchersAverage: %w", err)
+	}
 	if q.getWatchTimeRankStmt, err = db.PrepareContext(ctx, getWatchTimeRank); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWatchTimeRank: %w", err)
+	}
+	if q.getWatchTimeRankAverageStmt, err = db.PrepareContext(ctx, getWatchTimeRankAverage); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWatchTimeRankAverage: %w", err)
 	}
 	if q.isUserBannedStmt, err = db.PrepareContext(ctx, isUserBanned); err != nil {
 		return nil, fmt.Errorf("error preparing query IsUserBanned: %w", err)
@@ -154,9 +160,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTopWatchersStmt: %w", cerr)
 		}
 	}
+	if q.getTopWatchersAverageStmt != nil {
+		if cerr := q.getTopWatchersAverageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTopWatchersAverageStmt: %w", cerr)
+		}
+	}
 	if q.getWatchTimeRankStmt != nil {
 		if cerr := q.getWatchTimeRankStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getWatchTimeRankStmt: %w", cerr)
+		}
+	}
+	if q.getWatchTimeRankAverageStmt != nil {
+		if cerr := q.getWatchTimeRankAverageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWatchTimeRankAverageStmt: %w", cerr)
 		}
 	}
 	if q.isUserBannedStmt != nil {
@@ -216,51 +232,55 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                      DBTX
-	tx                      *sql.Tx
-	banUserStmt             *sql.Stmt
-	createChannelStmt       *sql.Stmt
-	createMessageStmt       *sql.Stmt
-	createUserStmt          *sql.Stmt
-	deleteChannelStmt       *sql.Stmt
-	deleteCommandStmt       *sql.Stmt
-	getBannedUsersStmt      *sql.Stmt
-	getChannelNamesStmt     *sql.Stmt
-	getCommandStmt          *sql.Stmt
-	getCommandsStmt         *sql.Stmt
-	getCounterStmt          *sql.Stmt
-	getMatchingCommandsStmt *sql.Stmt
-	getMetricsStmt          *sql.Stmt
-	getTopWatchersStmt      *sql.Stmt
-	getWatchTimeRankStmt    *sql.Stmt
-	isUserBannedStmt        *sql.Stmt
-	setCommandStmt          *sql.Stmt
-	updateCounterStmt       *sql.Stmt
-	updateMetricsStmt       *sql.Stmt
+	db                          DBTX
+	tx                          *sql.Tx
+	banUserStmt                 *sql.Stmt
+	createChannelStmt           *sql.Stmt
+	createMessageStmt           *sql.Stmt
+	createUserStmt              *sql.Stmt
+	deleteChannelStmt           *sql.Stmt
+	deleteCommandStmt           *sql.Stmt
+	getBannedUsersStmt          *sql.Stmt
+	getChannelNamesStmt         *sql.Stmt
+	getCommandStmt              *sql.Stmt
+	getCommandsStmt             *sql.Stmt
+	getCounterStmt              *sql.Stmt
+	getMatchingCommandsStmt     *sql.Stmt
+	getMetricsStmt              *sql.Stmt
+	getTopWatchersStmt          *sql.Stmt
+	getTopWatchersAverageStmt   *sql.Stmt
+	getWatchTimeRankStmt        *sql.Stmt
+	getWatchTimeRankAverageStmt *sql.Stmt
+	isUserBannedStmt            *sql.Stmt
+	setCommandStmt              *sql.Stmt
+	updateCounterStmt           *sql.Stmt
+	updateMetricsStmt           *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                      tx,
-		tx:                      tx,
-		banUserStmt:             q.banUserStmt,
-		createChannelStmt:       q.createChannelStmt,
-		createMessageStmt:       q.createMessageStmt,
-		createUserStmt:          q.createUserStmt,
-		deleteChannelStmt:       q.deleteChannelStmt,
-		deleteCommandStmt:       q.deleteCommandStmt,
-		getBannedUsersStmt:      q.getBannedUsersStmt,
-		getChannelNamesStmt:     q.getChannelNamesStmt,
-		getCommandStmt:          q.getCommandStmt,
-		getCommandsStmt:         q.getCommandsStmt,
-		getCounterStmt:          q.getCounterStmt,
-		getMatchingCommandsStmt: q.getMatchingCommandsStmt,
-		getMetricsStmt:          q.getMetricsStmt,
-		getTopWatchersStmt:      q.getTopWatchersStmt,
-		getWatchTimeRankStmt:    q.getWatchTimeRankStmt,
-		isUserBannedStmt:        q.isUserBannedStmt,
-		setCommandStmt:          q.setCommandStmt,
-		updateCounterStmt:       q.updateCounterStmt,
-		updateMetricsStmt:       q.updateMetricsStmt,
+		db:                          tx,
+		tx:                          tx,
+		banUserStmt:                 q.banUserStmt,
+		createChannelStmt:           q.createChannelStmt,
+		createMessageStmt:           q.createMessageStmt,
+		createUserStmt:              q.createUserStmt,
+		deleteChannelStmt:           q.deleteChannelStmt,
+		deleteCommandStmt:           q.deleteCommandStmt,
+		getBannedUsersStmt:          q.getBannedUsersStmt,
+		getChannelNamesStmt:         q.getChannelNamesStmt,
+		getCommandStmt:              q.getCommandStmt,
+		getCommandsStmt:             q.getCommandsStmt,
+		getCounterStmt:              q.getCounterStmt,
+		getMatchingCommandsStmt:     q.getMatchingCommandsStmt,
+		getMetricsStmt:              q.getMetricsStmt,
+		getTopWatchersStmt:          q.getTopWatchersStmt,
+		getTopWatchersAverageStmt:   q.getTopWatchersAverageStmt,
+		getWatchTimeRankStmt:        q.getWatchTimeRankStmt,
+		getWatchTimeRankAverageStmt: q.getWatchTimeRankAverageStmt,
+		isUserBannedStmt:            q.isUserBannedStmt,
+		setCommandStmt:              q.setCommandStmt,
+		updateCounterStmt:           q.updateCounterStmt,
+		updateMetricsStmt:           q.updateMetricsStmt,
 	}
 }
