@@ -22,8 +22,8 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
-	if q.banUserStmt, err = db.PrepareContext(ctx, banUser); err != nil {
-		return nil, fmt.Errorf("error preparing query BanUser: %w", err)
+	if q.approveStmt, err = db.PrepareContext(ctx, approve); err != nil {
+		return nil, fmt.Errorf("error preparing query Approve: %w", err)
 	}
 	if q.createChannelStmt, err = db.PrepareContext(ctx, createChannel); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateChannel: %w", err)
@@ -39,9 +39,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteCommandStmt, err = db.PrepareContext(ctx, deleteCommand); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteCommand: %w", err)
-	}
-	if q.getBannedUsersStmt, err = db.PrepareContext(ctx, getBannedUsers); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBannedUsers: %w", err)
 	}
 	if q.getChannelNamesStmt, err = db.PrepareContext(ctx, getChannelNames); err != nil {
 		return nil, fmt.Errorf("error preparing query GetChannelNames: %w", err)
@@ -73,11 +70,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getWatchTimeRankAverageStmt, err = db.PrepareContext(ctx, getWatchTimeRankAverage); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWatchTimeRankAverage: %w", err)
 	}
-	if q.isUserBannedStmt, err = db.PrepareContext(ctx, isUserBanned); err != nil {
-		return nil, fmt.Errorf("error preparing query IsUserBanned: %w", err)
+	if q.isApprovedStmt, err = db.PrepareContext(ctx, isApproved); err != nil {
+		return nil, fmt.Errorf("error preparing query IsApproved: %w", err)
 	}
 	if q.setCommandStmt, err = db.PrepareContext(ctx, setCommand); err != nil {
 		return nil, fmt.Errorf("error preparing query SetCommand: %w", err)
+	}
+	if q.unapproveStmt, err = db.PrepareContext(ctx, unapprove); err != nil {
+		return nil, fmt.Errorf("error preparing query Unapprove: %w", err)
 	}
 	if q.updateCounterStmt, err = db.PrepareContext(ctx, updateCounter); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateCounter: %w", err)
@@ -90,9 +90,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
-	if q.banUserStmt != nil {
-		if cerr := q.banUserStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing banUserStmt: %w", cerr)
+	if q.approveStmt != nil {
+		if cerr := q.approveStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing approveStmt: %w", cerr)
 		}
 	}
 	if q.createChannelStmt != nil {
@@ -118,11 +118,6 @@ func (q *Queries) Close() error {
 	if q.deleteCommandStmt != nil {
 		if cerr := q.deleteCommandStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteCommandStmt: %w", cerr)
-		}
-	}
-	if q.getBannedUsersStmt != nil {
-		if cerr := q.getBannedUsersStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBannedUsersStmt: %w", cerr)
 		}
 	}
 	if q.getChannelNamesStmt != nil {
@@ -175,14 +170,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getWatchTimeRankAverageStmt: %w", cerr)
 		}
 	}
-	if q.isUserBannedStmt != nil {
-		if cerr := q.isUserBannedStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing isUserBannedStmt: %w", cerr)
+	if q.isApprovedStmt != nil {
+		if cerr := q.isApprovedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing isApprovedStmt: %w", cerr)
 		}
 	}
 	if q.setCommandStmt != nil {
 		if cerr := q.setCommandStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setCommandStmt: %w", cerr)
+		}
+	}
+	if q.unapproveStmt != nil {
+		if cerr := q.unapproveStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing unapproveStmt: %w", cerr)
 		}
 	}
 	if q.updateCounterStmt != nil {
@@ -234,13 +234,12 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 type Queries struct {
 	db                          DBTX
 	tx                          *sql.Tx
-	banUserStmt                 *sql.Stmt
+	approveStmt                 *sql.Stmt
 	createChannelStmt           *sql.Stmt
 	createMessageStmt           *sql.Stmt
 	createUserStmt              *sql.Stmt
 	deleteChannelStmt           *sql.Stmt
 	deleteCommandStmt           *sql.Stmt
-	getBannedUsersStmt          *sql.Stmt
 	getChannelNamesStmt         *sql.Stmt
 	getCommandStmt              *sql.Stmt
 	getCommandsStmt             *sql.Stmt
@@ -251,8 +250,9 @@ type Queries struct {
 	getTopWatchersAverageStmt   *sql.Stmt
 	getWatchTimeRankStmt        *sql.Stmt
 	getWatchTimeRankAverageStmt *sql.Stmt
-	isUserBannedStmt            *sql.Stmt
+	isApprovedStmt              *sql.Stmt
 	setCommandStmt              *sql.Stmt
+	unapproveStmt               *sql.Stmt
 	updateCounterStmt           *sql.Stmt
 	updateMetricsStmt           *sql.Stmt
 }
@@ -261,13 +261,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
 		db:                          tx,
 		tx:                          tx,
-		banUserStmt:                 q.banUserStmt,
+		approveStmt:                 q.approveStmt,
 		createChannelStmt:           q.createChannelStmt,
 		createMessageStmt:           q.createMessageStmt,
 		createUserStmt:              q.createUserStmt,
 		deleteChannelStmt:           q.deleteChannelStmt,
 		deleteCommandStmt:           q.deleteCommandStmt,
-		getBannedUsersStmt:          q.getBannedUsersStmt,
 		getChannelNamesStmt:         q.getChannelNamesStmt,
 		getCommandStmt:              q.getCommandStmt,
 		getCommandsStmt:             q.getCommandsStmt,
@@ -278,8 +277,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTopWatchersAverageStmt:   q.getTopWatchersAverageStmt,
 		getWatchTimeRankStmt:        q.getWatchTimeRankStmt,
 		getWatchTimeRankAverageStmt: q.getWatchTimeRankAverageStmt,
-		isUserBannedStmt:            q.isUserBannedStmt,
+		isApprovedStmt:              q.isApprovedStmt,
 		setCommandStmt:              q.setCommandStmt,
+		unapproveStmt:               q.unapproveStmt,
 		updateCounterStmt:           q.updateCounterStmt,
 		updateMetricsStmt:           q.updateMetricsStmt,
 	}

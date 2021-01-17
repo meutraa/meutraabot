@@ -2,13 +2,11 @@
 go build ./cmd/meutraabot || exit
 
 rm meutraabot
-
-rsync -aP --delete ./ lost:meutraabot/
-ssh lost /usr/bin/env sh << EOF
-cd meutraabot
-CGO_ENABLED=0 go build -ldflags "-extldflags -static" ./cmd/meutraabot && \
-        sudo systemctl stop meutraabot && \
-        sudo cp meutraabot /etc/nixos/bin/meutraabot/ && \
-        sudo systemctl start meutraabot && \
-        sudo journalctl -xefu meutraabot
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-extldflags -static" ./cmd/meutraabot
+rsync -aP meutraabot 192.168.1.102:
+ssh root@192.168.1.102 /usr/bin/env sh << EOF
+        systemctl stop meutraabot && \
+        cp /home/paul/meutraabot /etc/nixos/bin/meutraabot/ && \
+        systemctl start meutraabot && \
+        journalctl -xefu meutraabot
 EOF

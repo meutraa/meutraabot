@@ -16,7 +16,7 @@ import (
 
 	irc "github.com/gempir/go-twitch-irc/v2"
 	"github.com/hako/durafmt"
-	"github.com/nicklaw5/helix"
+	"github.com/meutraa/helix"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
@@ -45,25 +45,26 @@ func pick(fallback string, values []string) string {
 }
 
 func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) template.FuncMap {
+	ch := strings.TrimLeft(e.Channel, "#")
 	return template.FuncMap{
-		"rank":               func() string { return s.funcRank(ctx, e.Channel, d.SelectedUser, true) },
-		"rank_alltime":       func() string { return s.funcRank(ctx, e.Channel, d.SelectedUser, false) },
-		"points":             func() string { return s.funcPoints(ctx, e.Channel, d.SelectedUser, true) },
-		"points_alltime":     func() string { return s.funcPoints(ctx, e.Channel, d.SelectedUser, false) },
-		"activetime":         func() string { return s.funcActivetime(ctx, e.Channel, d.SelectedUser, false) },
-		"activetime_average": func() string { return s.funcActivetime(ctx, e.Channel, d.SelectedUser, true) },
-		"words":              func() string { return s.funcWords(ctx, e.Channel, d.SelectedUser, false) },
-		"words_average":      func() string { return s.funcWords(ctx, e.Channel, d.SelectedUser, true) },
-		"messages":           func() string { return s.funcMessages(ctx, e.Channel, d.SelectedUser, false) },
-		"messages_average":   func() string { return s.funcMessages(ctx, e.Channel, d.SelectedUser, true) },
-		"counter":            func(name string) string { return s.funcCounter(ctx, e.Channel, name) },
-		"get":                func(url string) string { return s.funcGet(ctx, e.Channel, url) },
-		"json":               func(key, json string) string { return s.funcJsonParse(e.Channel, key, json) },
-		"top":                func() string { return s.funcTop(ctx, e.Channel, pick("5", d.Arg), true) },
-		"top_alltime":        func() string { return s.funcTop(ctx, e.Channel, pick("5", d.Arg), false) },
+		"rank":               func() string { return s.funcRank(ctx, ch, d.SelectedUser, true) },
+		"rank_alltime":       func() string { return s.funcRank(ctx, ch, d.SelectedUser, false) },
+		"points":             func() string { return s.funcPoints(ctx, ch, d.SelectedUser, true) },
+		"points_alltime":     func() string { return s.funcPoints(ctx, ch, d.SelectedUser, false) },
+		"activetime":         func() string { return s.funcActivetime(ctx, ch, d.SelectedUser, false) },
+		"activetime_average": func() string { return s.funcActivetime(ctx, ch, d.SelectedUser, true) },
+		"words":              func() string { return s.funcWords(ctx, ch, d.SelectedUser, false) },
+		"words_average":      func() string { return s.funcWords(ctx, ch, d.SelectedUser, true) },
+		"messages":           func() string { return s.funcMessages(ctx, ch, d.SelectedUser, false) },
+		"messages_average":   func() string { return s.funcMessages(ctx, ch, d.SelectedUser, true) },
+		"counter":            func(name string) string { return s.funcCounter(ctx, ch, name) },
+		"get":                func(url string) string { return s.funcGet(ctx, ch, url) },
+		"json":               func(key, json string) string { return s.funcJsonParse(ch, key, json) },
+		"top":                func() string { return s.funcTop(ctx, ch, pick("5", d.Arg), true) },
+		"top_alltime":        func() string { return s.funcTop(ctx, ch, pick("5", d.Arg), false) },
 		"followage":          func() string { return s.funcFollowage(e.RoomID, d.SelectedUser) },
 		"uptime":             func() string { return s.funcUptime(e.RoomID) },
-		"incCounter":         func(name, change string) string { return s.funcIncCounter(ctx, e.Channel, name, change) },
+		"incCounter":         func(name, change string) string { return s.funcIncCounter(ctx, ch, name, change) },
 	}
 }
 
@@ -76,12 +77,12 @@ func (s *Server) funcTop(ctx context.Context, channel, count string, average boo
 	var top []string
 	if !average {
 		top, err = s.q.GetTopWatchers(ctx, db.GetTopWatchersParams{
-			ChannelName: "#" + channel,
+			ChannelName: channel,
 			Limit:       c,
 		})
 	} else {
 		top, err = s.q.GetTopWatchersAverage(ctx, db.GetTopWatchersAverageParams{
-			ChannelName: "#" + channel,
+			ChannelName: channel,
 			Limit:       c,
 		})
 	}
@@ -150,7 +151,7 @@ func (s *Server) funcFollowage(channelID, user string) string {
 	}
 
 	start := resp.Data.Follows[0].FollowedAt
-	return durafmt.Parse(time.Now().Sub(start)).LimitFirstN(2).String()
+	return durafmt.Parse(time.Now().Sub(start)).LimitFirstN(6).String()
 }
 
 func (s *Server) funcIncCounter(ctx context.Context, channel, name string, change string) string {
@@ -163,7 +164,7 @@ func (s *Server) funcIncCounter(ctx context.Context, channel, name string, chang
 	}
 
 	if err := s.q.UpdateCounter(ctx, db.UpdateCounterParams{
-		ChannelName: "#" + channel,
+		ChannelName: channel,
 		Name:        strings.ToLower(name),
 		Value:       count,
 	}); nil != err {
@@ -174,7 +175,7 @@ func (s *Server) funcIncCounter(ctx context.Context, channel, name string, chang
 
 func (s *Server) funcCounter(ctx context.Context, channel, name string) string {
 	value, err := s.q.GetCounter(ctx, db.GetCounterParams{
-		ChannelName: "#" + channel,
+		ChannelName: channel,
 		Name:        strings.ToLower(name),
 	})
 	if nil != err {
@@ -182,6 +183,19 @@ func (s *Server) funcCounter(ctx context.Context, channel, name string) string {
 		return ""
 	}
 	return strconv.FormatInt(value, 10)
+}
+
+func getBotList() ([]byte, error) {
+	resp, err := http.Get("https://api.twitchinsights.net/v1/bots/online")
+	if err != nil {
+		return []byte{}, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if nil != err {
+		return []byte{}, err
+	}
+	return body, err
 }
 
 func (s *Server) funcGet(ctx context.Context, channel, url string) string {
@@ -226,7 +240,7 @@ func (s *Server) metrics(ctx context.Context, channel, user string, onMetrics fu
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
 	defer cancel()
 	metrics, err := s.q.GetMetrics(ctx, db.GetMetricsParams{
-		ChannelName: "#" + channel,
+		ChannelName: channel,
 		Sender:      strings.ToLower(user),
 	})
 	if nil != err {
@@ -284,12 +298,12 @@ func (s *Server) funcRank(ctx context.Context, channel, user string, average boo
 	var err error
 	if !average {
 		rank, err = s.q.GetWatchTimeRank(ctx, db.GetWatchTimeRankParams{
-			ChannelName: "#" + channel,
+			ChannelName: channel,
 			Sender:      strings.ToLower(user),
 		})
 	} else {
 		rank, err = s.q.GetWatchTimeRankAverage(ctx, db.GetWatchTimeRankAverageParams{
-			ChannelName: "#" + channel,
+			ChannelName: channel,
 			Sender:      strings.ToLower(user),
 		})
 	}

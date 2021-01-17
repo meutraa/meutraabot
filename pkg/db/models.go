@@ -7,8 +7,9 @@ import (
 	"time"
 )
 
-type Ban struct {
-	Username string
+type Approval struct {
+	ChannelName string
+	Username    string
 }
 
 type Channel struct {

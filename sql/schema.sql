@@ -4,13 +4,20 @@ CREATE TABLE channels (
   updated_at timestamp with time zone
 );
 
-ALTER TABLE channels ADD CONSTRAINT channel_pkey PRIMARY KEY (channel_name);
+ALTER TABLE
+  channels
+ADD
+  CONSTRAINT channel_pkey PRIMARY KEY (channel_name);
 
-CREATE TABLE bans (
+CREATE TABLE approvals (
+  channel_name text NOT NULL,
   username text NOT NULL
 );
 
-ALTER TABLE bans ADD CONSTRAINT bans_pkey PRIMARY KEY (username);
+ALTER TABLE
+  approvals
+ADD
+  CONSTRAINT approvals_pkey PRIMARY KEY (channel_name, username);
 
 CREATE TABLE commands (
   channel_name text NOT NULL,
@@ -18,7 +25,10 @@ CREATE TABLE commands (
   template text NOT NULL
 );
 
-ALTER TABLE commands ADD CONSTRAINT command_pkey PRIMARY KEY (channel_name, name);
+ALTER TABLE
+  commands
+ADD
+  CONSTRAINT command_pkey PRIMARY KEY (channel_name, name);
 
 CREATE TABLE counter (
   channel_name text NOT NULL,
@@ -26,7 +36,10 @@ CREATE TABLE counter (
   value bigint NOT NULL DEFAULT 0
 );
 
-ALTER TABLE counter ADD CONSTRAINT counter_pkey PRIMARY KEY (channel_name, name);
+ALTER TABLE
+  counter
+ADD
+  CONSTRAINT counter_pkey PRIMARY KEY (channel_name, name);
 
 CREATE TABLE users (
   channel_name text NOT NULL,
@@ -38,7 +51,10 @@ CREATE TABLE users (
   watch_time bigint NOT NULL
 );
 
-ALTER TABLE users ADD CONSTRAINT user_pkey PRIMARY KEY (channel_name, sender);
+ALTER TABLE
+  users
+ADD
+  CONSTRAINT user_pkey PRIMARY KEY (channel_name, sender);
 
 CREATE TABLE messages (
   id SERIAL NOT NULL,
@@ -48,4 +64,7 @@ CREATE TABLE messages (
   message text NOT NULL
 );
 
-ALTER TABLE messages ADD CONSTRAINT message_pkey PRIMARY KEY (id);
+ALTER TABLE
+  messages
+ADD
+  CONSTRAINT message_pkey PRIMARY KEY (id);

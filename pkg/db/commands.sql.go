@@ -81,7 +81,7 @@ SELECT
   WHERE (
     channel_name = $1
     OR
-    channel_name = '#'
+    channel_name = 'global'
   )
   AND ($2::text ~ name)::bool
 `

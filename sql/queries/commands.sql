@@ -13,7 +13,7 @@ SELECT
   WHERE (
     channel_name = sqlc.arg('ChannelName')
     OR
-    channel_name = '#'
+    channel_name = 'global'
   )
   AND (sqlc.arg('Message')::text ~ name)::bool;
 
