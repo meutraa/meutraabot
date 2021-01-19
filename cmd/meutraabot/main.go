@@ -80,10 +80,23 @@ func run() error {
 				}
 				seconds := time.Now().Unix() - user.CreatedAt.Unix()
 				if seconds < 86400 {
-					log.Printf("(%v) %v banned based on age %v\n", follower.ToName, follower.FromName, seconds/60)
-					msg := fmt.Sprintf("/ban %v %v minutes old - send an unban request", follower.FromName, seconds/60)
-					log.Printf("(%v) %v", follower.ToName, msg)
-					s.irc.Say(follower.ToName, msg)
+					ban := true
+					count, err := s.q.GetMessageCount(context.Background(), db.GetMessageCountParams{
+						ChannelName: follower.ToName,
+						Sender:      follower.FromName,
+					})
+					if nil != err && err != sql.ErrNoRows {
+						log.Println("unable to get message count for user", follower.ToName, follower.FromName, err)
+					} else if count > 0 {
+						log.Printf("(%v) %v has sent messages before, not banning", follower.ToName, follower.FromName)
+						ban = false
+					}
+					if ban {
+						log.Printf("(%v) %v banned based on age %v\n", follower.ToName, follower.FromName, seconds/60)
+						msg := fmt.Sprintf("/ban %v %v minutes old - send an unban request", follower.FromName, seconds/60)
+						log.Printf("(%v) %v", follower.ToName, msg)
+						s.irc.Say(follower.ToName, msg)
+					}
 				} else {
 					log.Printf("(%v) %v approved based on age %v\n", follower.ToName, follower.FromName, seconds/60)
 				}
@@ -133,7 +146,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		BotName:      s.env.twitchUsername,
 		Command:      command,
 		Arg:          args,
-		SelectedUser: pick(e.User.Name, args),
+		SelectedUser: firstOr(args, e.User.Name),
 	}
 	functions := s.FuncMap(ctx, data, e)
 
@@ -356,7 +369,7 @@ func (s *Server) handleMessage(e irc.PrivateMessage) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
 	if err := s.q.CreateUser(ctx, db.CreateUserParams{

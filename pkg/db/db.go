@@ -55,6 +55,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getMatchingCommandsStmt, err = db.PrepareContext(ctx, getMatchingCommands); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMatchingCommands: %w", err)
 	}
+	if q.getMessageCountStmt, err = db.PrepareContext(ctx, getMessageCount); err != nil {
+		return nil, fmt.Errorf("error preparing query GetMessageCount: %w", err)
+	}
 	if q.getMetricsStmt, err = db.PrepareContext(ctx, getMetrics); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMetrics: %w", err)
 	}
@@ -143,6 +146,11 @@ func (q *Queries) Close() error {
 	if q.getMatchingCommandsStmt != nil {
 		if cerr := q.getMatchingCommandsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getMatchingCommandsStmt: %w", cerr)
+		}
+	}
+	if q.getMessageCountStmt != nil {
+		if cerr := q.getMessageCountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getMessageCountStmt: %w", cerr)
 		}
 	}
 	if q.getMetricsStmt != nil {
@@ -245,6 +253,7 @@ type Queries struct {
 	getCommandsStmt             *sql.Stmt
 	getCounterStmt              *sql.Stmt
 	getMatchingCommandsStmt     *sql.Stmt
+	getMessageCountStmt         *sql.Stmt
 	getMetricsStmt              *sql.Stmt
 	getTopWatchersStmt          *sql.Stmt
 	getTopWatchersAverageStmt   *sql.Stmt
@@ -272,6 +281,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getCommandsStmt:             q.getCommandsStmt,
 		getCounterStmt:              q.getCounterStmt,
 		getMatchingCommandsStmt:     q.getMatchingCommandsStmt,
+		getMessageCountStmt:         q.getMessageCountStmt,
 		getMetricsStmt:              q.getMetricsStmt,
 		getTopWatchersStmt:          q.getTopWatchersStmt,
 		getTopWatchersAverageStmt:   q.getTopWatchersAverageStmt,

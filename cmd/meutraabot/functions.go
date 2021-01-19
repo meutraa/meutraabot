@@ -35,7 +35,7 @@ type Data struct {
 	SelectedUser string   `json:".SelectedUser"`
 }
 
-func pick(fallback string, values []string) string {
+func firstOr(values []string, fallback string) string {
 	for _, v := range values {
 		if "" != v {
 			return v
@@ -60,8 +60,8 @@ func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) tem
 		"counter":            func(name string) string { return s.funcCounter(ctx, ch, name) },
 		"get":                func(url string) string { return s.funcGet(ctx, ch, url) },
 		"json":               func(key, json string) string { return s.funcJsonParse(ch, key, json) },
-		"top":                func() string { return s.funcTop(ctx, ch, pick("5", d.Arg), true) },
-		"top_alltime":        func() string { return s.funcTop(ctx, ch, pick("5", d.Arg), false) },
+		"top":                func() string { return s.funcTop(ctx, ch, firstOr(d.Arg, "5"), true) },
+		"top_alltime":        func() string { return s.funcTop(ctx, ch, firstOr(d.Arg, "5"), false) },
 		"followage":          func() string { return s.funcFollowage(e.RoomID, d.SelectedUser) },
 		"uptime":             func() string { return s.funcUptime(e.RoomID) },
 		"incCounter":         func(name, change string) string { return s.funcIncCounter(ctx, ch, name, change) },

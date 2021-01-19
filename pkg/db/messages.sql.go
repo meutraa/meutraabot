@@ -24,3 +24,23 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) er
 	_, err := q.exec(ctx, q.createMessageStmt, createMessage, arg.ChannelName, arg.Sender, arg.Message)
 	return err
 }
+
+const getMessageCount = `-- name: GetMessageCount :one
+SELECT
+  COUNT(*)
+  FROM messages
+  WHERE channel_name = $1
+  AND sender = $2
+`
+
+type GetMessageCountParams struct {
+	ChannelName string
+	Sender      string
+}
+
+func (q *Queries) GetMessageCount(ctx context.Context, arg GetMessageCountParams) (int64, error) {
+	row := q.queryRow(ctx, q.getMessageCountStmt, getMessageCount, arg.ChannelName, arg.Sender)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}

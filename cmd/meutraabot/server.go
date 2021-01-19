@@ -149,6 +149,7 @@ func (s *Server) SubscribeToFollows(channel string) {
 		return
 	}
 	topic := "https://api.twitch.tv/helix/users/follows?first=1&to_id=" + u.ID
+	
 	log.Println("subscribing to", topic)
 
 	res, err := s.twitch.PostWebhookSubscription(&helix.WebhookSubscriptionPayload{
