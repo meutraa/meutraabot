@@ -9,17 +9,17 @@ import (
 
 const deleteCommand = `-- name: DeleteCommand :exec
 DELETE FROM commands
-  WHERE channel_name = $1
+  WHERE channel_id = $1
   AND name = $2
 `
 
 type DeleteCommandParams struct {
-	ChannelName string
-	Name        string
+	ChannelID string
+	Name      string
 }
 
 func (q *Queries) DeleteCommand(ctx context.Context, arg DeleteCommandParams) error {
-	_, err := q.exec(ctx, q.deleteCommandStmt, deleteCommand, arg.ChannelName, arg.Name)
+	_, err := q.exec(ctx, q.deleteCommandStmt, deleteCommand, arg.ChannelID, arg.Name)
 	return err
 }
 
@@ -27,16 +27,16 @@ const getCommand = `-- name: GetCommand :one
 SELECT template
   FROM commands
   WHERE name = $2
-  AND channel_name = $1
+  AND channel_id = $1
 `
 
 type GetCommandParams struct {
-	ChannelName string
-	Name        string
+	ChannelID string
+	Name      string
 }
 
 func (q *Queries) GetCommand(ctx context.Context, arg GetCommandParams) (string, error) {
-	row := q.queryRow(ctx, q.getCommandStmt, getCommand, arg.ChannelName, arg.Name)
+	row := q.queryRow(ctx, q.getCommandStmt, getCommand, arg.ChannelID, arg.Name)
 	var template string
 	err := row.Scan(&template)
 	return template, err
@@ -45,12 +45,12 @@ func (q *Queries) GetCommand(ctx context.Context, arg GetCommandParams) (string,
 const getCommands = `-- name: GetCommands :many
 SELECT name
   FROM commands
-  WHERE channel_name = $1
+  WHERE channel_id = $1
   ORDER BY name ASC
 `
 
-func (q *Queries) GetCommands(ctx context.Context, channelName string) ([]string, error) {
-	rows, err := q.query(ctx, q.getCommandsStmt, getCommands, channelName)
+func (q *Queries) GetCommands(ctx context.Context, channelID string) ([]string, error) {
+	rows, err := q.query(ctx, q.getCommandsStmt, getCommands, channelID)
 	if err != nil {
 		return nil, err
 	}
@@ -76,29 +76,30 @@ const getMatchingCommands = `-- name: GetMatchingCommands :many
 SELECT
     template,
     name,
-    channel_name
+    channel_id
   FROM commands
   WHERE (
-    channel_name = $1
+    channel_id = $1
     OR
-    channel_name = 'global'
+    channel_id = $2
   )
-  AND ($2::text ~ name)::bool
+  AND ($3::text ~ name)::bool
 `
 
 type GetMatchingCommandsParams struct {
-	ChannelName string
-	Message     string
+	ChannelID       string
+	ChannelGlobalID string
+	Message         string
 }
 
 type GetMatchingCommandsRow struct {
-	Template    string
-	Name        string
-	ChannelName string
+	Template  string
+	Name      string
+	ChannelID string
 }
 
 func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingCommandsParams) ([]GetMatchingCommandsRow, error) {
-	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, arg.ChannelName, arg.Message)
+	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, arg.ChannelID, arg.ChannelGlobalID, arg.Message)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingComman
 	var items []GetMatchingCommandsRow
 	for rows.Next() {
 		var i GetMatchingCommandsRow
-		if err := rows.Scan(&i.Template, &i.Name, &i.ChannelName); err != nil {
+		if err := rows.Scan(&i.Template, &i.Name, &i.ChannelID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -121,7 +122,7 @@ func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingComman
 }
 
 const setCommand = `-- name: SetCommand :exec
-INSERT INTO commands (channel_name, name, template)
+INSERT INTO commands (channel_id, name, template)
   VALUES ($1, $2, $3)
   ON CONFLICT
   ON CONSTRAINT command_pkey DO UPDATE
@@ -129,12 +130,12 @@ INSERT INTO commands (channel_name, name, template)
 `
 
 type SetCommandParams struct {
-	ChannelName string
-	Name        string
-	Template    string
+	ChannelID string
+	Name      string
+	Template  string
 }
 
 func (q *Queries) SetCommand(ctx context.Context, arg SetCommandParams) error {
-	_, err := q.exec(ctx, q.setCommandStmt, setCommand, arg.ChannelName, arg.Name, arg.Template)
+	_, err := q.exec(ctx, q.setCommandStmt, setCommand, arg.ChannelID, arg.Name, arg.Template)
 	return err
 }

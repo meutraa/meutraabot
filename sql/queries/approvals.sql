@@ -4,12 +4,12 @@ SELECT
 FROM
   approvals
 WHERE
-  channel_name = $1
-  AND username = $2;
+  channel_id = $1
+  AND user_id = $2;
 
 -- name: Approve :exec
 INSERT INTO
-  approvals (channel_name, username)
+  approvals (channel_id, user_id)
 VALUES
   ($1, $2) ON CONFLICT DO NOTHING;
 
@@ -17,5 +17,5 @@ VALUES
 DELETE FROM
   approvals
 WHERE
-  channel_name = $1
-  AND username = $2;
+  channel_id = $1
+  AND user_id = $2;

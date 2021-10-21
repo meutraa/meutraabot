@@ -40,8 +40,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteCommandStmt, err = db.PrepareContext(ctx, deleteCommand); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteCommand: %w", err)
 	}
-	if q.getChannelNamesStmt, err = db.PrepareContext(ctx, getChannelNames); err != nil {
-		return nil, fmt.Errorf("error preparing query GetChannelNames: %w", err)
+	if q.getChannelsStmt, err = db.PrepareContext(ctx, getChannels); err != nil {
+		return nil, fmt.Errorf("error preparing query GetChannels: %w", err)
 	}
 	if q.getCommandStmt, err = db.PrepareContext(ctx, getCommand); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCommand: %w", err)
@@ -123,9 +123,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteCommandStmt: %w", cerr)
 		}
 	}
-	if q.getChannelNamesStmt != nil {
-		if cerr := q.getChannelNamesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getChannelNamesStmt: %w", cerr)
+	if q.getChannelsStmt != nil {
+		if cerr := q.getChannelsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getChannelsStmt: %w", cerr)
 		}
 	}
 	if q.getCommandStmt != nil {
@@ -248,7 +248,7 @@ type Queries struct {
 	createUserStmt              *sql.Stmt
 	deleteChannelStmt           *sql.Stmt
 	deleteCommandStmt           *sql.Stmt
-	getChannelNamesStmt         *sql.Stmt
+	getChannelsStmt             *sql.Stmt
 	getCommandStmt              *sql.Stmt
 	getCommandsStmt             *sql.Stmt
 	getCounterStmt              *sql.Stmt
@@ -276,7 +276,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createUserStmt:              q.createUserStmt,
 		deleteChannelStmt:           q.deleteChannelStmt,
 		deleteCommandStmt:           q.deleteCommandStmt,
-		getChannelNamesStmt:         q.getChannelNamesStmt,
+		getChannelsStmt:             q.getChannelsStmt,
 		getCommandStmt:              q.getCommandStmt,
 		getCommandsStmt:             q.getCommandsStmt,
 		getCounterStmt:              q.getCounterStmt,

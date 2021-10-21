@@ -8,43 +8,43 @@ import (
 )
 
 const createChannel = `-- name: CreateChannel :exec
-INSERT INTO channels (channel_name, created_at)
+INSERT INTO channels (channel_id, created_at)
   VALUES ($1, NOW())
   ON CONFLICT DO NOTHING
 `
 
-func (q *Queries) CreateChannel(ctx context.Context, channelName string) error {
-	_, err := q.exec(ctx, q.createChannelStmt, createChannel, channelName)
+func (q *Queries) CreateChannel(ctx context.Context, channelID string) error {
+	_, err := q.exec(ctx, q.createChannelStmt, createChannel, channelID)
 	return err
 }
 
 const deleteChannel = `-- name: DeleteChannel :exec
 DELETE FROM channels
-  WHERE channel_name = $1
+  WHERE channel_id = $1
 `
 
-func (q *Queries) DeleteChannel(ctx context.Context, channelName string) error {
-	_, err := q.exec(ctx, q.deleteChannelStmt, deleteChannel, channelName)
+func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
+	_, err := q.exec(ctx, q.deleteChannelStmt, deleteChannel, channelID)
 	return err
 }
 
-const getChannelNames = `-- name: GetChannelNames :many
-SELECT channel_name FROM channels
+const getChannels = `-- name: GetChannels :many
+SELECT channel_id FROM channels
 `
 
-func (q *Queries) GetChannelNames(ctx context.Context) ([]string, error) {
-	rows, err := q.query(ctx, q.getChannelNamesStmt, getChannelNames)
+func (q *Queries) GetChannels(ctx context.Context) ([]string, error) {
+	rows, err := q.query(ctx, q.getChannelsStmt, getChannels)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var items []string
 	for rows.Next() {
-		var channel_name string
-		if err := rows.Scan(&channel_name); err != nil {
+		var channel_id string
+		if err := rows.Scan(&channel_id); err != nil {
 			return nil, err
 		}
-		items = append(items, channel_name)
+		items = append(items, channel_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

@@ -1,5 +1,5 @@
 CREATE TABLE channels (
-  channel_name text NOT NULL,
+  channel_id text NOT NULL,
   created_at timestamp with time zone NOT NULL,
   updated_at timestamp with time zone
 );
@@ -7,20 +7,20 @@ CREATE TABLE channels (
 ALTER TABLE
   channels
 ADD
-  CONSTRAINT channel_pkey PRIMARY KEY (channel_name);
+  CONSTRAINT channel_pkey PRIMARY KEY (channel_id);
 
 CREATE TABLE approvals (
-  channel_name text NOT NULL,
-  username text NOT NULL
+  channel_id text NOT NULL,
+  user_id text NOT NULL
 );
 
 ALTER TABLE
   approvals
 ADD
-  CONSTRAINT approvals_pkey PRIMARY KEY (channel_name, username);
+  CONSTRAINT approvals_pkey PRIMARY KEY (channel_id, user_id);
 
 CREATE TABLE commands (
-  channel_name text NOT NULL,
+  channel_id text NOT NULL,
   name text NOT NULL,
   template text NOT NULL
 );
@@ -28,10 +28,10 @@ CREATE TABLE commands (
 ALTER TABLE
   commands
 ADD
-  CONSTRAINT command_pkey PRIMARY KEY (channel_name, name);
+  CONSTRAINT command_pkey PRIMARY KEY (channel_id, name);
 
 CREATE TABLE counter (
-  channel_name text NOT NULL,
+  channel_id text NOT NULL,
   name text NOT NULL,
   value bigint NOT NULL DEFAULT 0
 );
@@ -39,11 +39,11 @@ CREATE TABLE counter (
 ALTER TABLE
   counter
 ADD
-  CONSTRAINT counter_pkey PRIMARY KEY (channel_name, name);
+  CONSTRAINT counter_pkey PRIMARY KEY (channel_id, name);
 
 CREATE TABLE users (
-  channel_name text NOT NULL,
-  sender text NOT NULL,
+  channel_id text NOT NULL,
+  sender_id text NOT NULL,
   created_at timestamp with time zone NOT NULL,
   updated_at timestamp with time zone,
   word_count bigint NOT NULL,
@@ -54,12 +54,12 @@ CREATE TABLE users (
 ALTER TABLE
   users
 ADD
-  CONSTRAINT user_pkey PRIMARY KEY (channel_name, sender);
+  CONSTRAINT user_pkey PRIMARY KEY (channel_id, sender_id);
 
 CREATE TABLE messages (
   id SERIAL NOT NULL,
-  channel_name text NOT NULL,
-  sender text NOT NULL,
+  channel_id text NOT NULL,
+  sender_id text NOT NULL,
   created_at timestamp with time zone NOT NULL,
   message text NOT NULL
 );

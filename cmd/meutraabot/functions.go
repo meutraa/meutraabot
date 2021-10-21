@@ -16,28 +16,30 @@ import (
 
 	irc "github.com/gempir/go-twitch-irc/v2"
 	"github.com/hako/durafmt"
-	"github.com/meutraa/helix"
+	"github.com/nicklaw5/helix/v2"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
 type Data struct {
-	User         string   `json:".User"`
-	UserID       string   `json:".UserID"`
-	Channel      string   `json:".Channel"`
-	ChannelID    string   `json:".ChannelID"`
-	MessageID    string   `json:".MessageID"`
-	IsMod        bool     `json:".IsMod"`
-	IsOwner      bool     `json:".IsOwner"`
-	IsSub        bool     `json:".IsSub"`
-	BotName      string   `json:".BotName"`
-	Command      string   `json:".Command"`
-	Arg          []string `json:".Arg"`
-	SelectedUser string   `json:".SelectedUser"`
+	User           string   `json:".User"`
+	UserID         string   `json:".UserID"`
+	Channel        string   `json:".Channel"`
+	ChannelID      string   `json:".ChannelID"`
+	MessageID      string   `json:".MessageID"`
+	IsMod          bool     `json:".IsMod"`
+	IsOwner        bool     `json:".IsOwner"`
+	IsAdmin        bool     `json:".IsAdmin"`
+	IsSub          bool     `json:".IsSub"`
+	BotID          string   `json:".BotID"`
+	Command        string   `json:".Command"`
+	Arg            []string `json:".Arg"`
+	SelectedUser   string   `json:".SelectedUser"`
+	SelectedUserID string   `json:".SelectedUserID"`
 }
 
 func firstOr(values []string, fallback string) string {
 	for _, v := range values {
-		if "" != v {
+		if v != "" {
 			return v
 		}
 	}
@@ -45,7 +47,7 @@ func firstOr(values []string, fallback string) string {
 }
 
 func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) template.FuncMap {
-	ch := strings.TrimLeft(e.Channel, "#")
+	ch := e.RoomID
 	return template.FuncMap{
 		"rank":               func() string { return s.funcRank(ctx, ch, d.SelectedUser, true) },
 		"rank_alltime":       func() string { return s.funcRank(ctx, ch, d.SelectedUser, false) },
@@ -58,8 +60,8 @@ func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) tem
 		"messages":           func() string { return s.funcMessages(ctx, ch, d.SelectedUser, false) },
 		"messages_average":   func() string { return s.funcMessages(ctx, ch, d.SelectedUser, true) },
 		"counter":            func(name string) string { return s.funcCounter(ctx, ch, name) },
-		"get":                func(url string) string { return s.funcGet(ctx, ch, url) },
-		"json":               func(key, json string) string { return s.funcJsonParse(ch, key, json) },
+		"get":                func(url string) string { return s.funcGet(ctx, url) },
+		"json":               func(key, json string) string { return s.funcJsonParse(key, json) },
 		"top":                func() string { return s.funcTop(ctx, ch, firstOr(d.Arg, "5"), true) },
 		"top_alltime":        func() string { return s.funcTop(ctx, ch, firstOr(d.Arg, "5"), false) },
 		"followage":          func() string { return s.funcFollowage(e.RoomID, d.SelectedUser) },
@@ -68,7 +70,7 @@ func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) tem
 	}
 }
 
-func (s *Server) funcTop(ctx context.Context, channel, count string, average bool) string {
+func (s *Server) funcTop(ctx context.Context, channelID, count string, average bool) string {
 	var c int32 = 5
 	cnt, err := strconv.ParseInt(count, 10, 32)
 	if nil == err {
@@ -77,17 +79,17 @@ func (s *Server) funcTop(ctx context.Context, channel, count string, average boo
 	var top []string
 	if !average {
 		top, err = s.q.GetTopWatchers(ctx, db.GetTopWatchersParams{
-			ChannelName: channel,
-			Limit:       c,
+			ChannelID: channelID,
+			Limit:     c,
 		})
 	} else {
 		top, err = s.q.GetTopWatchersAverage(ctx, db.GetTopWatchersAverageParams{
-			ChannelName: channel,
-			Limit:       c,
+			ChannelID: channelID,
+			Limit:     c,
 		})
 	}
 	if nil != err {
-		log.Println("unable to get top watchers", channel, err)
+		log.Println("unable to get top watchers", channelID, err)
 		return ""
 	}
 
@@ -110,34 +112,49 @@ func (s *Server) funcUptime(channelID string) string {
 	}
 
 	start := resp.Data.Streams[0].StartedAt
-	return durafmt.Parse(time.Now().Sub(start)).LimitFirstN(2).String()
+	return durafmt.Parse(time.Since(start)).LimitFirstN(2).String()
 }
 
-func User(client *helix.Client, user string) (helix.User, error) {
+func UserByName(client *helix.Client, username string) (helix.User, error) {
 	resp, err := client.GetUsers(&helix.UsersParams{
-		Logins: []string{user},
+		Logins: []string{username},
 	})
 	if err != nil {
-		log.Println("unable to get user", err)
+		log.Println("unable to get user by id", err)
 		return helix.User{}, err
 	}
-
 	if len(resp.Data.Users) == 0 {
-		log.Println("no user found for", user)
-		return helix.User{}, errors.New("user not found")
+		log.Println("unable to get user by id", err)
+		return helix.User{}, errors.New("unable to find user")
 	}
 
 	return resp.Data.Users[0], nil
 }
 
-func (s *Server) funcFollowage(channelID, user string) string {
-	u, err := User(s.twitch, user)
-	if nil != err {
-		return "can not find user " + user
+func User(client *helix.Client, userID string) (helix.User, error) {
+	res, err := Users(client, []string{userID})
+	if err != nil {
+		return helix.User{}, err
 	}
+	return res[0], nil
+}
+
+func Users(client *helix.Client, userIDs []string) ([]helix.User, error) {
+	resp, err := client.GetUsers(&helix.UsersParams{
+		IDs: userIDs,
+	})
+	if err != nil {
+		log.Println("unable to get users by id", err)
+		return []helix.User{}, err
+	}
+
+	return resp.Data.Users, nil
+}
+
+func (s *Server) funcFollowage(channelID, userID string) string {
 	resp, err := s.twitch.GetUsersFollows(&helix.UsersFollowsParams{
 		First:  1,
-		FromID: u.ID,
+		FromID: userID,
 		ToID:   channelID,
 	})
 	if err != nil {
@@ -146,40 +163,39 @@ func (s *Server) funcFollowage(channelID, user string) string {
 	}
 
 	if len(resp.Data.Follows) == 0 {
-		log.Println("no follow info found for", channelID, user)
+		log.Println("no follow info found for", channelID, userID)
 		return "user does not follow"
 	}
 
 	start := resp.Data.Follows[0].FollowedAt
-	return durafmt.Parse(time.Now().Sub(start)).LimitFirstN(6).String()
+	return durafmt.Parse(time.Since(start)).LimitFirstN(6).String()
 }
 
-func (s *Server) funcIncCounter(ctx context.Context, channel, name string, change string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
+func (s *Server) funcIncCounter(ctx context.Context, channelID, name, change string) string {
+	context, cancel := context.WithTimeout(ctx, time.Duration(time.Second*2))
 	defer cancel()
-
 	count, err := strconv.ParseInt(change, 10, 64)
 	if nil != err {
 		log.Println("unable to parse change count", err)
 	}
 
-	if err := s.q.UpdateCounter(ctx, db.UpdateCounterParams{
-		ChannelName: channel,
-		Name:        strings.ToLower(name),
-		Value:       count,
+	if err := s.q.UpdateCounter(context, db.UpdateCounterParams{
+		ChannelID: channelID,
+		Name:      strings.ToLower(name),
+		Value:     count,
 	}); nil != err {
-		log.Println("unable to update counter", channel, name, err)
+		log.Println("unable to update counter", channelID, name, err)
 	}
 	return ""
 }
 
-func (s *Server) funcCounter(ctx context.Context, channel, name string) string {
+func (s *Server) funcCounter(ctx context.Context, channelID, name string) string {
 	value, err := s.q.GetCounter(ctx, db.GetCounterParams{
-		ChannelName: channel,
-		Name:        strings.ToLower(name),
+		ChannelID: channelID,
+		Name:      strings.ToLower(name),
 	})
 	if nil != err {
-		log.Println("unable to lookup counter", channel, name, err)
+		log.Println("unable to lookup counter", channelID, name, err)
 		return ""
 	}
 	return strconv.FormatInt(value, 10)
@@ -198,7 +214,7 @@ func getBotList() ([]byte, error) {
 	return body, err
 }
 
-func (s *Server) funcGet(ctx context.Context, channel, url string) string {
+func (s *Server) funcGet(ctx context.Context, url string) string {
 	req, err := http.NewRequest("GET", url, nil)
 	if nil != err {
 		log.Println("unable to create request for", url, err)
@@ -208,13 +224,13 @@ func (s *Server) funcGet(ctx context.Context, channel, url string) string {
 	req.Header.Add("Accept", "text/plain")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Println("unable to get url", channel, url, err)
+		log.Println("unable to get url", url, err)
 		return ""
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if nil != err {
-		log.Println("unable to read body of url", channel, url, err)
+		log.Println("unable to read body of url", url, err)
 		return ""
 	}
 	str := strings.ReplaceAll(string(body), "\n", " ")
@@ -222,7 +238,7 @@ func (s *Server) funcGet(ctx context.Context, channel, url string) string {
 	return str
 }
 
-func (s *Server) funcJsonParse(channel, key, str string) string {
+func (s *Server) funcJsonParse(key, str string) string {
 	m := map[string]interface{}{}
 	if err := json.Unmarshal([]byte(str), &m); err != nil {
 		log.Println("unable to unmarshal", err)
@@ -236,12 +252,12 @@ func (s *Server) funcJsonParse(channel, key, str string) string {
 	return string(data)
 }
 
-func (s *Server) metrics(ctx context.Context, channel, user string, onMetrics func(db.GetMetricsRow) string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*2))
+func (s *Server) metrics(ctx context.Context, channelID, userID string, onMetrics func(db.GetMetricsRow) string) string {
+	context, cancel := context.WithTimeout(ctx, time.Duration(time.Second*2))
 	defer cancel()
-	metrics, err := s.q.GetMetrics(ctx, db.GetMetricsParams{
-		ChannelName: channel,
-		Sender:      strings.ToLower(user),
+	metrics, err := s.q.GetMetrics(context, db.GetMetricsParams{
+		ChannelID: channelID,
+		SenderID:  userID,
 	})
 	if nil != err {
 		log.Println("unable to lookup user metrics", err)
@@ -250,8 +266,8 @@ func (s *Server) metrics(ctx context.Context, channel, user string, onMetrics fu
 	return onMetrics(metrics)
 }
 
-func (s *Server) funcPoints(ctx context.Context, channel, user string, average bool) string {
-	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
+func (s *Server) funcPoints(ctx context.Context, channelID, userID string, average bool) string {
+	return s.metrics(ctx, channelID, userID, func(m db.GetMetricsRow) string {
 		points := int64(m.Points)
 		if average {
 			points *= 1000000
@@ -261,8 +277,8 @@ func (s *Server) funcPoints(ctx context.Context, channel, user string, average b
 	})
 }
 
-func (s *Server) funcWords(ctx context.Context, channel, user string, average bool) string {
-	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
+func (s *Server) funcWords(ctx context.Context, channelID, userID string, average bool) string {
+	return s.metrics(ctx, channelID, userID, func(m db.GetMetricsRow) string {
 		words := m.WordCount
 		if average {
 			words *= 1000000
@@ -272,8 +288,8 @@ func (s *Server) funcWords(ctx context.Context, channel, user string, average bo
 	})
 }
 
-func (s *Server) funcActivetime(ctx context.Context, channel, user string, average bool) string {
-	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
+func (s *Server) funcActivetime(ctx context.Context, channelID, userID string, average bool) string {
+	return s.metrics(ctx, channelID, userID, func(m db.GetMetricsRow) string {
 		watch := m.WatchTime * 1000000000
 		if average {
 			watch = int64(math.Ceil(float64(watch) / m.Age))
@@ -282,8 +298,8 @@ func (s *Server) funcActivetime(ctx context.Context, channel, user string, avera
 	})
 }
 
-func (s *Server) funcMessages(ctx context.Context, channel, user string, average bool) string {
-	return s.metrics(ctx, channel, user, func(m db.GetMetricsRow) string {
+func (s *Server) funcMessages(ctx context.Context, channelID, userID string, average bool) string {
+	return s.metrics(ctx, channelID, userID, func(m db.GetMetricsRow) string {
 		messages := m.MessageCount
 		if average {
 			messages *= 1000000
@@ -293,22 +309,22 @@ func (s *Server) funcMessages(ctx context.Context, channel, user string, average
 	})
 }
 
-func (s *Server) funcRank(ctx context.Context, channel, user string, average bool) string {
+func (s *Server) funcRank(ctx context.Context, channelID, userID string, average bool) string {
 	var rank int32
 	var err error
 	if !average {
 		rank, err = s.q.GetWatchTimeRank(ctx, db.GetWatchTimeRankParams{
-			ChannelName: channel,
-			Sender:      strings.ToLower(user),
+			ChannelID: channelID,
+			SenderID:  userID,
 		})
 	} else {
 		rank, err = s.q.GetWatchTimeRankAverage(ctx, db.GetWatchTimeRankAverageParams{
-			ChannelName: channel,
-			Sender:      strings.ToLower(user),
+			ChannelID: channelID,
+			SenderID:  userID,
 		})
 	}
 	if nil != err {
-		log.Println("unable to get user rank", channel, user, err)
+		log.Println("unable to get user rank", channelID, userID, err)
 		return ""
 	}
 	return strconv.FormatInt(int64(rank), 10)

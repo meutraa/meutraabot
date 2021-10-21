@@ -9,18 +9,18 @@ import (
 
 const approve = `-- name: Approve :exec
 INSERT INTO
-  approvals (channel_name, username)
+  approvals (channel_id, user_id)
 VALUES
   ($1, $2) ON CONFLICT DO NOTHING
 `
 
 type ApproveParams struct {
-	ChannelName string
-	Username    string
+	ChannelID string
+	UserID    string
 }
 
 func (q *Queries) Approve(ctx context.Context, arg ApproveParams) error {
-	_, err := q.exec(ctx, q.approveStmt, approve, arg.ChannelName, arg.Username)
+	_, err := q.exec(ctx, q.approveStmt, approve, arg.ChannelID, arg.UserID)
 	return err
 }
 
@@ -30,17 +30,17 @@ SELECT
 FROM
   approvals
 WHERE
-  channel_name = $1
-  AND username = $2
+  channel_id = $1
+  AND user_id = $2
 `
 
 type IsApprovedParams struct {
-	ChannelName string
-	Username    string
+	ChannelID string
+	UserID    string
 }
 
 func (q *Queries) IsApproved(ctx context.Context, arg IsApprovedParams) (int64, error) {
-	row := q.queryRow(ctx, q.isApprovedStmt, isApproved, arg.ChannelName, arg.Username)
+	row := q.queryRow(ctx, q.isApprovedStmt, isApproved, arg.ChannelID, arg.UserID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -50,16 +50,16 @@ const unapprove = `-- name: Unapprove :exec
 DELETE FROM
   approvals
 WHERE
-  channel_name = $1
-  AND username = $2
+  channel_id = $1
+  AND user_id = $2
 `
 
 type UnapproveParams struct {
-	ChannelName string
-	Username    string
+	ChannelID string
+	UserID    string
 }
 
 func (q *Queries) Unapprove(ctx context.Context, arg UnapproveParams) error {
-	_, err := q.exec(ctx, q.unapproveStmt, unapprove, arg.ChannelName, arg.Username)
+	_, err := q.exec(ctx, q.unapproveStmt, unapprove, arg.ChannelID, arg.UserID)
 	return err
 }

@@ -9,24 +9,24 @@ import (
 
 const getCounter = `-- name: GetCounter :one
 SELECT value FROM counter
-  WHERE channel_name = $1
+  WHERE channel_id = $1
   AND name = $2
 `
 
 type GetCounterParams struct {
-	ChannelName string
-	Name        string
+	ChannelID string
+	Name      string
 }
 
 func (q *Queries) GetCounter(ctx context.Context, arg GetCounterParams) (int64, error) {
-	row := q.queryRow(ctx, q.getCounterStmt, getCounter, arg.ChannelName, arg.Name)
+	row := q.queryRow(ctx, q.getCounterStmt, getCounter, arg.ChannelID, arg.Name)
 	var value int64
 	err := row.Scan(&value)
 	return value, err
 }
 
 const updateCounter = `-- name: UpdateCounter :exec
-INSERT INTO counter (channel_name, name, value)
+INSERT INTO counter (channel_id, name, value)
   VALUES ($1, $2, $3)
   ON CONFLICT
   ON CONSTRAINT counter_pkey DO UPDATE
@@ -34,12 +34,12 @@ INSERT INTO counter (channel_name, name, value)
 `
 
 type UpdateCounterParams struct {
-	ChannelName string
-	Name        string
-	Value       int64
+	ChannelID string
+	Name      string
+	Value     int64
 }
 
 func (q *Queries) UpdateCounter(ctx context.Context, arg UpdateCounterParams) error {
-	_, err := q.exec(ctx, q.updateCounterStmt, updateCounter, arg.ChannelName, arg.Name, arg.Value)
+	_, err := q.exec(ctx, q.updateCounterStmt, updateCounter, arg.ChannelID, arg.Name, arg.Value)
 	return err
 }

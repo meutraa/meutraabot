@@ -1,5 +1,5 @@
 -- name: UpdateCounter :exec
-INSERT INTO counter (channel_name, name, value)
+INSERT INTO counter (channel_id, name, value)
   VALUES ($1, $2, $3)
   ON CONFLICT
   ON CONSTRAINT counter_pkey DO UPDATE
@@ -7,5 +7,5 @@ INSERT INTO counter (channel_name, name, value)
 
 -- name: GetCounter :one
 SELECT value FROM counter
-  WHERE channel_name = $1
+  WHERE channel_id = $1
   AND name = $2;

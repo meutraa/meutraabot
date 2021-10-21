@@ -7,28 +7,30 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	irc "github.com/gempir/go-twitch-irc/v2"
-	"github.com/meutraa/helix"
+	"github.com/nicklaw5/helix/v2"
 	"github.com/pkg/errors"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
 type Server struct {
-	irc            *irc.Client
-	conn           *sql.DB
-	twitch         *helix.Client
-	q              *db.Queries
-	activeInterval int
-	env            *Environment
+	irc    *irc.Client
+	conn   *sql.DB
+	twitch *helix.Client
+	q      *db.Queries
+	env    *Environment
 }
 
 type Environment struct {
-	twitchUsername           string
-	twitchOwner              string
+	twitchUserID             string
+	twitchOwnerID            string
 	twitchOauthToken         string
+	twitchChallengeSecret    string
+	twitchChallengeURL       string
 	twitchClientSecret       string
 	twitchClientID           string
 	twitchSubListen          string
@@ -86,15 +88,18 @@ func (s *Server) PrepareTwitchClient() error {
 	return nil
 }
 
-func (s *Server) OnChannels(ctx context.Context, onChannel func(channel string)) error {
-	channels, err := s.q.GetChannelNames(ctx)
+func (s *Server) OnChannels(ctx context.Context, onChannel func(broadcaster helix.User)) error {
+	channels, err := s.q.GetChannels(ctx)
 	if nil != err && err != sql.ErrNoRows {
 		return errors.Wrap(err, "unable to get channels")
 	}
 
-	// Try to join all channels in our channel table
-	for _, channel := range channels {
-		onChannel(channel)
+	broadcasters, err := Users(s.twitch, channels)
+	if nil != err {
+		return err
+	}
+	for _, broadcaster := range broadcasters {
+		onChannel(broadcaster)
 	}
 	return nil
 }
@@ -116,48 +121,44 @@ func (s *Server) JoinChannel(channel string) {
 }
 
 func (s *Server) UnsubscribeAll() {
-	subs, err := s.twitch.GetWebhookSubscriptions(&helix.WebhookSubscriptionsParams{
-		First: 100,
-	})
+	subs, err := s.twitch.GetEventSubSubscriptions(&helix.EventSubSubscriptionsParams{})
 	if nil != err {
 		log.Println("unable to get existing subscriptions")
 		return
 	}
-	log.Println("GetWebhookSubscriptions", subs.StatusCode)
-	log.Println(len(subs.Data.WebhookSubscriptions), "existing subscriptions")
+	log.Println("EventSubSubscriptions", subs.StatusCode)
+	log.Println(len(subs.Data.EventSubSubscriptions), "existing subscriptions")
 
-	for _, sub := range subs.Data.WebhookSubscriptions {
-		res, err := s.twitch.PostWebhookSubscription(&helix.WebhookSubscriptionPayload{
-			Callback:     sub.Callback,
-			Mode:         "unsubscribe",
-			Topic:        sub.Topic,
-			LeaseSeconds: 86400, // one day, 10 day max
-		})
+	for _, sub := range subs.Data.EventSubSubscriptions {
+		res, err := s.twitch.RemoveEventSubSubscription(sub.ID)
 		if err != nil {
 			log.Println("unable to unsubscribe to channel follows", err)
 		} else {
 			log.Printf("code: %v, message: %v, error: %v\n", res.StatusCode, res.ErrorMessage, res.Error)
-			log.Printf("unsubscribed from follow notifications %v %v\n", sub.Callback, sub.Topic)
+			log.Printf("unsubscribed from follow notifications %v\n", sub.ID)
 		}
 	}
 }
 
 func (s *Server) SubscribeToFollows(channel string) {
-	u, err := User(s.twitch, channel)
+	u, err := UserByName(s.twitch, channel)
 	if nil != err {
 		log.Printf("(%v) unable to get user: %v", channel, err)
 		return
 	}
-	topic := "https://api.twitch.tv/helix/users/follows?first=1&to_id=" + u.ID
-	
-	log.Println("subscribing to", topic)
+	log.Println("subscribing to", u.ID)
 
-	res, err := s.twitch.PostWebhookSubscription(&helix.WebhookSubscriptionPayload{
-		Callback:     "https://twitch.lost.host",
-		Mode:         "subscribe",
-		Topic:        topic,
-		LeaseSeconds: 86400, // one day, 10 day max
-		Secret:       "q1k1lnfKbIU3RQ20ligrtVv3vHAkPW51",
+	res, err := s.twitch.CreateEventSubSubscription(&helix.EventSubSubscription{
+		Type:    helix.EventSubTypeChannelFollow,
+		Version: "1",
+		Condition: helix.EventSubCondition{
+			BroadcasterUserID: u.ID,
+		},
+		Transport: helix.EventSubTransport{
+			Method:   "webhook",
+			Callback: s.env.twitchChallengeURL,
+			Secret:   s.env.twitchChallengeSecret,
+		},
 	})
 	if err != nil {
 		log.Println("unable to subscribe to channel follows", err)
@@ -168,15 +169,24 @@ func (s *Server) SubscribeToFollows(channel string) {
 }
 
 func (s *Server) PrepareIRC() error {
-	s.irc = irc.NewClient(s.env.twitchUsername, s.env.twitchOauthToken)
+	self, err := User(s.twitch, s.env.twitchUserID)
+	if nil != err {
+		log.Println("unable to find user for id", s.env.twitchUserID)
+		return err
+	}
+
+	s.irc = irc.NewClient(self.Login, s.env.twitchOauthToken)
+	log.Println("created client")
 	s.irc.OnGlobalUserStateMessage(func(m irc.GlobalUserStateMessage) {
-		s.irc.Join(s.env.twitchUsername)
+		log.Println("GlobalUserStateMessage recieved")
+		// Get own user id
+		s.irc.Join(self.Login)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 
 		s.UnsubscribeAll()
-		if err := s.OnChannels(ctx, func(channel string) {
-			s.JoinChannel(channel)
+		if err := s.OnChannels(ctx, func(broadcaster helix.User) {
+			s.JoinChannel(broadcaster.Login)
 		}); nil != err {
 			log.Println(err)
 		}
@@ -187,29 +197,41 @@ func (s *Server) PrepareIRC() error {
 		go s.checkUser(m.Channel, m.User)
 	})
 
-	s.irc.OnUserPartMessage(func(m irc.UserPartMessage) {
-		log.Printf("(%v) %v: left", m.Channel, m.User)
-	})
-
 	s.irc.OnPrivateMessage(s.handleMessage)
 
+	log.Println("connecting", s.irc.IrcAddress, s.irc.TLS)
 	return s.irc.Connect()
 }
 
-func (s *Server) checkUser(channel, user string) {
+func (s *Server) checkUser(channel, username string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
+	// Get channel and user id
+	cUser, err := UserByName(s.twitch, channel)
+	if nil != err {
+		log.Println("unable to get channel ID")
+		return
+	}
+
+	qUser, err := UserByName(s.twitch, username)
+	if nil != err {
+		log.Println("unable to get user ID")
+		return
+	}
+	channelID := cUser.ID
+	userID := qUser.ID
+
 	approved, err := s.q.IsApproved(ctx, db.IsApprovedParams{
-		ChannelName: channel,
-		Username:    user,
+		ChannelID: channelID,
+		UserID:    userID,
 	})
 	if nil != err && err != sql.ErrNoRows {
 		log.Println("unable to check if user is approved", err)
 		return
 	}
 	if approved > 0 {
-		log.Printf("(%v) %v: already approved", channel, user)
+		log.Printf("(%v) %v: already approved", channelID, userID)
 		return
 	}
 	bots, err := getBotList()
@@ -218,20 +240,20 @@ func (s *Server) checkUser(channel, user string) {
 		return
 	}
 
-	approve := func(context context.Context, channel, user string) {
-		log.Printf("(%v) %v: not a bot", channel, user)
+	approve := func(context context.Context, channelID, username string) {
+		log.Printf("(%v) %v: not a bot", channelID, username)
 		if err := s.q.Approve(ctx, db.ApproveParams{
-			ChannelName: channel,
-			Username:    user,
+			ChannelID: channelID,
+			UserID:    userID,
 		}); nil != err {
-			log.Printf("(%v) %v: unable to approve: %v", channel, user, err)
+			log.Printf("(%v) %v: unable to approve: %v", channelID, userID, err)
 			return
 		}
 	}
 
 	// Do a naive string search to speed up negative results
-	if !strings.Contains(string(bots), user) {
-		approve(ctx, channel, user)
+	if !strings.Contains(string(bots), userID) {
+		approve(ctx, channelID, username)
 		return
 	}
 
@@ -242,25 +264,27 @@ func (s *Server) checkUser(channel, user string) {
 	}
 
 	for _, bot := range resp.Bots {
-		b, ok := bot[0].(string)
+		b, ok := bot[2].(int)
 		if !ok {
-			log.Println("unable to cast bot name")
+			log.Println("unable to cast bot id")
 		}
-		if b != user {
+		bid := strconv.Itoa(b)
+		if bid != userID {
 			continue
 		}
 
-		if count, ok := bot[1].(float64); !ok {
+		if count, ok := bot[1].(int); !ok {
 			log.Println("unable to cast bot count", b)
-			s.irc.Say(channel, "/ban "+user)
+			// Get Username
+			s.irc.Say(channel, "/ban "+username)
 		} else {
-			s.irc.Say(channel, fmt.Sprintf("/ban %v in %v channels", user, int(count)))
+			s.irc.Say(channel, fmt.Sprintf("/ban %v in %v channels", username, int(count)))
 		}
 		return
 	}
 
 	// This user is not a bot
-	approve(ctx, channel, user)
+	approve(ctx, channelID, username)
 }
 
 type BotResponse struct {
@@ -275,17 +299,21 @@ func (s *Server) ReadEnvironmentVariables() error {
 	s.env.twitchOauthToken = os.Getenv("TWITCH_OAUTH_TOKEN")
 	s.env.twitchClientID = os.Getenv("TWITCH_CLIENT_ID")
 	s.env.twitchClientSecret = os.Getenv("TWITCH_CLIENT_SECRET")
+	s.env.twitchChallengeSecret = os.Getenv("TWITCH_CHALLENGE_SECRET")
+	s.env.twitchChallengeURL = os.Getenv("TWITCH_CHALLENGE_URL")
 	s.env.postgresConnectionString = os.Getenv("POSTGRES_CONNECTION_STRING")
-	s.env.twitchUsername = os.Getenv("TWITCH_USERNAME")
-	s.env.twitchOwner = os.Getenv("TWITCH_OWNER")
+	s.env.twitchUserID = os.Getenv("TWITCH_USER_ID")
+	s.env.twitchOwnerID = os.Getenv("TWITCH_OWNER_ID")
 
-	if "" == s.env.twitchUsername ||
-		"" == s.env.twitchOwner ||
-		"" == s.env.twitchSubListen ||
-		"" == s.env.postgresConnectionString ||
-		"" == s.env.twitchClientSecret ||
-		"" == s.env.twitchClientID ||
-		"" == s.env.twitchOauthToken {
+	if s.env.twitchUserID == "" ||
+		s.env.twitchOwnerID == "" ||
+		s.env.twitchSubListen == "" ||
+		s.env.postgresConnectionString == "" ||
+		s.env.twitchChallengeURL == "" ||
+		s.env.twitchChallengeSecret == "" ||
+		s.env.twitchClientSecret == "" ||
+		s.env.twitchClientID == "" ||
+		s.env.twitchOauthToken == "" {
 		return errors.New("missing environment variable")
 	}
 	return nil

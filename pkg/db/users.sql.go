@@ -10,18 +10,18 @@ import (
 
 const createUser = `-- name: CreateUser :exec
 INSERT INTO users
-  (channel_name, sender, created_at, message_count, word_count, watch_time)
+  (channel_id, sender_id, created_at, message_count, word_count, watch_time)
   VALUES ($1, $2, NOW(), 0, 0, 0)
   ON CONFLICT DO NOTHING
 `
 
 type CreateUserParams struct {
-	ChannelName string
-	Sender      string
+	ChannelID string
+	SenderID  string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
-	_, err := q.exec(ctx, q.createUserStmt, createUser, arg.ChannelName, arg.Sender)
+	_, err := q.exec(ctx, q.createUserStmt, createUser, arg.ChannelID, arg.SenderID)
 	return err
 }
 
@@ -34,13 +34,13 @@ SELECT
   (watch_time/60) + (word_count / 8) as points,
   created_at
   FROM users
-  WHERE channel_name = $1
-  AND sender = $2
+  WHERE channel_id = $1
+  AND sender_id = $2
 `
 
 type GetMetricsParams struct {
-	ChannelName string
-	Sender      string
+	ChannelID string
+	SenderID  string
 }
 
 type GetMetricsRow struct {
@@ -53,7 +53,7 @@ type GetMetricsRow struct {
 }
 
 func (q *Queries) GetMetrics(ctx context.Context, arg GetMetricsParams) (GetMetricsRow, error) {
-	row := q.queryRow(ctx, q.getMetricsStmt, getMetrics, arg.ChannelName, arg.Sender)
+	row := q.queryRow(ctx, q.getMetricsStmt, getMetrics, arg.ChannelID, arg.SenderID)
 	var i GetMetricsRow
 	err := row.Scan(
 		&i.WatchTime,
@@ -68,31 +68,31 @@ func (q *Queries) GetMetrics(ctx context.Context, arg GetMetricsParams) (GetMetr
 
 const getTopWatchers = `-- name: GetTopWatchers :many
 SELECT
-  sender
+  sender_id
   FROM users
-  WHERE channel_name = $1
+  WHERE channel_id = $1
   ORDER BY ((watch_time/60) + (word_count / 8)) DESC
   LIMIT $2
 `
 
 type GetTopWatchersParams struct {
-	ChannelName string
-	Limit       int32
+	ChannelID string
+	Limit     int32
 }
 
 func (q *Queries) GetTopWatchers(ctx context.Context, arg GetTopWatchersParams) ([]string, error) {
-	rows, err := q.query(ctx, q.getTopWatchersStmt, getTopWatchers, arg.ChannelName, arg.Limit)
+	rows, err := q.query(ctx, q.getTopWatchersStmt, getTopWatchers, arg.ChannelID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var items []string
 	for rows.Next() {
-		var sender string
-		if err := rows.Scan(&sender); err != nil {
+		var sender_id string
+		if err := rows.Scan(&sender_id); err != nil {
 			return nil, err
 		}
-		items = append(items, sender)
+		items = append(items, sender_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -105,31 +105,31 @@ func (q *Queries) GetTopWatchers(ctx context.Context, arg GetTopWatchersParams) 
 
 const getTopWatchersAverage = `-- name: GetTopWatchersAverage :many
 SELECT
-  sender
+  sender_id
   FROM users
-  WHERE channel_name = $1
+  WHERE channel_id = $1
   ORDER BY (((watch_time/60) + (word_count / 8)) / extract(epoch from (NOW() - created_at))) DESC
   LIMIT $2
 `
 
 type GetTopWatchersAverageParams struct {
-	ChannelName string
-	Limit       int32
+	ChannelID string
+	Limit     int32
 }
 
 func (q *Queries) GetTopWatchersAverage(ctx context.Context, arg GetTopWatchersAverageParams) ([]string, error) {
-	rows, err := q.query(ctx, q.getTopWatchersAverageStmt, getTopWatchersAverage, arg.ChannelName, arg.Limit)
+	rows, err := q.query(ctx, q.getTopWatchersAverageStmt, getTopWatchersAverage, arg.ChannelID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var items []string
 	for rows.Next() {
-		var sender string
-		if err := rows.Scan(&sender); err != nil {
+		var sender_id string
+		if err := rows.Scan(&sender_id); err != nil {
 			return nil, err
 		}
-		items = append(items, sender)
+		items = append(items, sender_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -146,20 +146,20 @@ SELECT
   FROM
     (SELECT
       RANK() OVER (ORDER BY watch_time DESC) AS rank,
-      sender
+      sender_id
       FROM users
-      WHERE channel_name = $1
+      WHERE channel_id = $1
   ) AS ss
-  WHERE sender = $2
+  WHERE sender_id = $2
 `
 
 type GetWatchTimeRankParams struct {
-	ChannelName string
-	Sender      string
+	ChannelID string
+	SenderID  string
 }
 
 func (q *Queries) GetWatchTimeRank(ctx context.Context, arg GetWatchTimeRankParams) (int32, error) {
-	row := q.queryRow(ctx, q.getWatchTimeRankStmt, getWatchTimeRank, arg.ChannelName, arg.Sender)
+	row := q.queryRow(ctx, q.getWatchTimeRankStmt, getWatchTimeRank, arg.ChannelID, arg.SenderID)
 	var rank int32
 	err := row.Scan(&rank)
 	return rank, err
@@ -171,20 +171,20 @@ SELECT
   FROM
     (SELECT
       RANK() OVER (ORDER BY (watch_time / extract(epoch from (NOW() - created_at))) DESC) AS rank,
-      sender
+      sender_id
       FROM users
-      WHERE channel_name = $1
+      WHERE channel_id = $1
   ) AS ss
-  WHERE sender = $2
+  WHERE sender_id = $2
 `
 
 type GetWatchTimeRankAverageParams struct {
-	ChannelName string
-	Sender      string
+	ChannelID string
+	SenderID  string
 }
 
 func (q *Queries) GetWatchTimeRankAverage(ctx context.Context, arg GetWatchTimeRankAverageParams) (int32, error) {
-	row := q.queryRow(ctx, q.getWatchTimeRankAverageStmt, getWatchTimeRankAverage, arg.ChannelName, arg.Sender)
+	row := q.queryRow(ctx, q.getWatchTimeRankAverageStmt, getWatchTimeRankAverage, arg.ChannelID, arg.SenderID)
 	var rank int32
 	err := row.Scan(&rank)
 	return rank, err
@@ -201,17 +201,17 @@ UPDATE users
       ELSE watch_time
     END,
     updated_at = NOW()
-  WHERE channel_name = $1
-  AND sender = $2
+  WHERE channel_id = $1
+  AND sender_id = $2
 `
 
 type UpdateMetricsParams struct {
-	ChannelName string
-	Sender      string
-	WordCount   int64
+	ChannelID string
+	SenderID  string
+	WordCount int64
 }
 
 func (q *Queries) UpdateMetrics(ctx context.Context, arg UpdateMetricsParams) error {
-	_, err := q.exec(ctx, q.updateMetricsStmt, updateMetrics, arg.ChannelName, arg.Sender, arg.WordCount)
+	_, err := q.exec(ctx, q.updateMetricsStmt, updateMetrics, arg.ChannelID, arg.SenderID, arg.WordCount)
 	return err
 }

@@ -8,39 +8,39 @@ import (
 )
 
 type Approval struct {
-	ChannelName string
-	Username    string
+	ChannelID string
+	UserID    string
 }
 
 type Channel struct {
-	ChannelName string
-	CreatedAt   time.Time
-	UpdatedAt   sql.NullTime
+	ChannelID string
+	CreatedAt time.Time
+	UpdatedAt sql.NullTime
 }
 
 type Command struct {
-	ChannelName string
-	Name        string
-	Template    string
+	ChannelID string
+	Name      string
+	Template  string
 }
 
 type Counter struct {
-	ChannelName string
-	Name        string
-	Value       int64
+	ChannelID string
+	Name      string
+	Value     int64
 }
 
 type Message struct {
-	ID          int32
-	ChannelName string
-	Sender      string
-	CreatedAt   time.Time
-	Message     string
+	ID        int32
+	ChannelID string
+	SenderID  string
+	CreatedAt time.Time
+	Message   string
 }
 
 type User struct {
-	ChannelName  string
-	Sender       string
+	ChannelID    string
+	SenderID     string
 	CreatedAt    time.Time
 	UpdatedAt    sql.NullTime
 	WordCount    int64

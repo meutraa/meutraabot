@@ -9,19 +9,19 @@ import (
 
 const createMessage = `-- name: CreateMessage :exec
 INSERT INTO messages
-  (channel_name, sender, created_at, message)
+  (channel_id, sender_id, created_at, message)
   VALUES ($1, $2, NOW(), $3)
   ON CONFLICT DO NOTHING
 `
 
 type CreateMessageParams struct {
-	ChannelName string
-	Sender      string
-	Message     string
+	ChannelID string
+	SenderID  string
+	Message   string
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) error {
-	_, err := q.exec(ctx, q.createMessageStmt, createMessage, arg.ChannelName, arg.Sender, arg.Message)
+	_, err := q.exec(ctx, q.createMessageStmt, createMessage, arg.ChannelID, arg.SenderID, arg.Message)
 	return err
 }
 
@@ -29,17 +29,17 @@ const getMessageCount = `-- name: GetMessageCount :one
 SELECT
   COUNT(*)
   FROM messages
-  WHERE channel_name = $1
-  AND sender = $2
+  WHERE channel_id = $1
+  AND sender_id = $2
 `
 
 type GetMessageCountParams struct {
-	ChannelName string
-	Sender      string
+	ChannelID string
+	SenderID  string
 }
 
 func (q *Queries) GetMessageCount(ctx context.Context, arg GetMessageCountParams) (int64, error) {
-	row := q.queryRow(ctx, q.getMessageCountStmt, getMessageCount, arg.ChannelName, arg.Sender)
+	row := q.queryRow(ctx, q.getMessageCountStmt, getMessageCount, arg.ChannelID, arg.SenderID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
