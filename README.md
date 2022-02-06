@@ -8,8 +8,8 @@ Command (templates) are golang templates
 
 Usage|User|Mod|Channel Owner|Operator|Description
 -----|----|---|-------------|--------|-----------
-__+leave__|✓|✓|✓|✓|Leave the caller's chat
 __+ban USERNAME__| | | |✓|Ban a user from all chats the bot is in
+__+leave__|✓|✓|✓|✓|Leave the caller's chat
 __+join__|✓|✓|✓|✓|Join the caller's chat
 __+get COMMAND__|✓|✓|✓|✓|Show the command template for an identifier
 __+set COMMAND__| |✓|✓|✓|Set a command template for an identifier
@@ -19,6 +19,8 @@ __+gget COMMAND__|✓|✓|✓|✓|Show the global command template for an identi
 __+gset COMMAND__| | | |✓|Set a global command template for an identifier
 __+gunset COMMAND__| | | |✓|Unset a global command by identifier
 __+glist__|✓|✓|✓|✓|List all global commands
+__+approve USERNAME__| | |✓|✓|Never ban this bot
+__+unapprove USERNAME__| | |✓|✓|Redact your never ban this bot order
 __+functions__|✓|✓|✓|✓|List functions for use in command templates
 __+data__|✓|✓|✓|✓|List data for use in command templates
 __+test TEMPLATE__| |✓|✓|✓|Test a template without creating a command
