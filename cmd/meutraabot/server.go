@@ -3,12 +3,9 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	irc "github.com/gempir/go-twitch-irc/v2"
@@ -107,20 +104,29 @@ func (s *Server) OnChannels(ctx context.Context, onChannel func(broadcaster heli
 func (s *Server) JoinChannel(channel string) {
 	s.irc.Join(channel)
 
-	// Vet all users
-	users, err := s.irc.Userlist(channel)
-	if nil != err {
-		log.Println("unable to get user list", err)
-		return
-	}
-	for _, user := range users {
-		go s.checkUser(channel, user)
-	}
+	// go s.SubscribeToFollows(channel)
 
-	go s.SubscribeToFollows(channel)
+	// Vet all users
+	go func() {
+		time.Sleep(10 * time.Second)
+		users, err := s.irc.Userlist(channel)
+		if nil != err {
+			log.Println("unable to get user list", err)
+			return
+		}
+		bots, err := getBotList()
+		if nil != err {
+			log.Println("unable to get bot list on channel join", channel, err)
+		} else {
+			log.Printf("(%v) found %v users in channel", channel, len(users))
+			for _, user := range users {
+				go s.checkUser(bots, channel, user)
+			}
+		}
+	}()
 }
 
-func (s *Server) UnsubscribeAll() {
+/*func (s *Server) UnsubscribeAll() {
 	subs, err := s.twitch.GetEventSubSubscriptions(&helix.EventSubSubscriptionsParams{})
 	if nil != err {
 		log.Println("unable to get existing subscriptions")
@@ -166,7 +172,7 @@ func (s *Server) SubscribeToFollows(channel string) {
 		log.Printf("code: %v, message: %v, error: %v\n", res.StatusCode, res.ErrorMessage, res.Error)
 		log.Printf("(%v) subscribed to follow notifications\n", channel)
 	}
-}
+}*/
 
 func (s *Server) PrepareIRC() error {
 	self, err := User(s.twitch, s.env.twitchUserID)
@@ -184,7 +190,7 @@ func (s *Server) PrepareIRC() error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 
-		s.UnsubscribeAll()
+		// s.UnsubscribeAll()
 		if err := s.OnChannels(ctx, func(broadcaster helix.User) {
 			s.JoinChannel(broadcaster.Login)
 		}); nil != err {
@@ -194,7 +200,7 @@ func (s *Server) PrepareIRC() error {
 
 	s.irc.OnUserJoinMessage(func(m irc.UserJoinMessage) {
 		log.Printf("(%v) %v: joined", m.Channel, m.User)
-		go s.checkUser(m.Channel, m.User)
+		go s.checkUser(nil, m.Channel, m.User)
 	})
 
 	s.irc.OnPrivateMessage(s.handleMessage)
@@ -203,7 +209,17 @@ func (s *Server) PrepareIRC() error {
 	return s.irc.Connect()
 }
 
-func (s *Server) checkUser(channel, username string) {
+func (s *Server) checkUser(bots *BotsResponse, channel, username string) {
+	log.Printf("(%v) %v: checking if bot", channel, username)
+	if nil == bots {
+		var err error
+		bots, err = getBotList()
+		if nil != err {
+			log.Println("unable to download bot list when checking", username, err)
+			return
+		}
+
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
@@ -227,69 +243,43 @@ func (s *Server) checkUser(channel, username string) {
 		UserID:    userID,
 	})
 	if nil != err && err != sql.ErrNoRows {
-		log.Println("unable to check if user is approved", err)
+		log.Printf("(%v) %v: unable to check approval status in db: %v", channel, username, err)
 		return
 	}
 	if approved > 0 {
-		log.Printf("(%v) %v: already approved", channelID, userID)
+		log.Printf("(%v) %v: already approved", channel, username)
 		return
 	}
-	bots, err := getBotList()
-	if nil != err {
-		log.Println("unable to download bot list", err)
-		return
-	}
-
-	approve := func(context context.Context, channelID, username string) {
-		log.Printf("(%v) %v: not a bot", channelID, username)
-		if err := s.q.Approve(ctx, db.ApproveParams{
-			ChannelID: channelID,
-			UserID:    userID,
-		}); nil != err {
-			log.Printf("(%v) %v: unable to approve: %v", channelID, userID, err)
-			return
-		}
-	}
-
-	// Do a naive string search to speed up negative results
-	if !strings.Contains(string(bots), userID) {
-		approve(ctx, channelID, username)
-		return
-	}
-
-	var resp BotResponse
-	if err := json.Unmarshal(bots, &resp); err != nil {
-		log.Println("unable to unmarshal bot list", err)
-		return
-	}
-
-	for _, bot := range resp.Bots {
-		b, ok := bot[2].(int)
+	for _, bot := range bots.Bots {
+		b, ok := bot[0].(string)
 		if !ok {
-			log.Println("unable to cast bot id")
+			log.Println("unable to cast bot name", bot[0])
+			continue
 		}
-		bid := strconv.Itoa(b)
-		if bid != userID {
+		if b != username {
 			continue
 		}
 
-		if count, ok := bot[1].(int); !ok {
-			log.Println("unable to cast bot count", b)
-			// Get Username
-			s.irc.Say(channel, "/ban "+username)
+		count, ok := bot[1].(int)
+		if !ok {
+			log.Printf("(%v) %v: banning: is a bot", channel, username)
+			s.irc.Say(channel, "/ban "+username+" is a bot")
 		} else {
-			s.irc.Say(channel, fmt.Sprintf("/ban %v in %v channels", username, int(count)))
+			log.Printf("(%v) %v : banning: is a bot in %v channels", channel, username, count)
+			s.irc.Say(channel, "/ban "+username+" is a bot in "+strconv.Itoa(count)+" channels")
 		}
 		return
 	}
 
 	// This user is not a bot
-	approve(ctx, channelID, username)
-}
-
-type BotResponse struct {
-	Bots  [][]interface{} `json:"bots"`
-	Total int             `json:"_total"`
+	log.Printf("(%v) %v: not a bot", channel, username)
+	if err := s.q.Approve(ctx, db.ApproveParams{
+		ChannelID: channelID,
+		UserID:    userID,
+	}); nil != err {
+		log.Printf("(%v) %v: unable to approve: %v", channel, username, err)
+		return
+	}
 }
 
 func (s *Server) ReadEnvironmentVariables() error {

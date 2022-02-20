@@ -5,10 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -17,10 +14,7 @@ import (
 	"time"
 
 	irc "github.com/gempir/go-twitch-irc/v2"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	_ "github.com/lib/pq"
-	"github.com/nicklaw5/helix/v2"
 	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
@@ -29,11 +23,11 @@ type Message struct {
 	Body    string
 }
 
-type eventSubNotification struct {
+/*type eventSubNotification struct {
 	Subscription helix.EventSubSubscription `json:"subscription"`
 	Challenge    string                     `json:"challenge"`
 	Event        json.RawMessage            `json:"event"`
-}
+}*/
 
 const seperator = " "
 
@@ -61,7 +55,7 @@ func run() error {
 		return err
 	}
 
-	go func() {
+	/*go func() {
 		r := chi.NewRouter()
 		r.Use(middleware.Recoverer)
 		r.Use(middleware.Logger)
@@ -125,12 +119,12 @@ func run() error {
 			}
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("ok"))
-		})
+		}}
 
 		if err := http.ListenAndServe(s.env.twitchSubListen, r); nil != err {
 			log.Println("unable to listen and server", err)
 		}
-	}()
+	}()*/
 
 	log.Println("creating irc")
 	if err := s.PrepareIRC(); nil != err {
@@ -448,9 +442,9 @@ func (s *Server) handleMessage(e irc.PrivateMessage) {
 	}
 
 	res := s.handleCommand(ctx, &e)
-	log.Printf("(%v) %v: %v\n", e.RoomID, e.User.Name, e.Message)
+	log.Printf("< (%v) %v: %v\n", e.Channel, e.User.Name, e.Message)
 	if res != "" {
-		log.Printf("(%v) %v: %v\n", e.RoomID, s.env.twitchUserID, res)
+		log.Printf("> (%v): %v\n", e.Channel, res)
 	}
 	res = strings.ReplaceAll(res, "\\n", "\n")
 	for _, message := range strings.Split(res, "\n") {

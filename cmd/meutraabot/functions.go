@@ -64,7 +64,7 @@ func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) tem
 		"json":               func(key, json string) string { return s.funcJsonParse(key, json) },
 		"top":                func() string { return s.funcTop(ctx, ch, firstOr(d.Arg, "5"), true) },
 		"top_alltime":        func() string { return s.funcTop(ctx, ch, firstOr(d.Arg, "5"), false) },
-		"followage":          func() string { return s.funcFollowage(e.RoomID, d.SelectedUser) },
+		"followage":          func() string { return s.funcFollowage(e.RoomID, d.SelectedUserID) },
 		"uptime":             func() string { return s.funcUptime(e.RoomID) },
 		"incCounter":         func(name, change string) string { return s.funcIncCounter(ctx, ch, name, change) },
 	}
@@ -124,7 +124,7 @@ func UserByName(client *helix.Client, username string) (helix.User, error) {
 		return helix.User{}, err
 	}
 	if len(resp.Data.Users) == 0 {
-		log.Println("unable to get user by id", err)
+		// log.Println("unable to get user by id", err)
 		return helix.User{}, errors.New("unable to find user")
 	}
 
@@ -201,17 +201,26 @@ func (s *Server) funcCounter(ctx context.Context, channelID, name string) string
 	return strconv.FormatInt(value, 10)
 }
 
-func getBotList() ([]byte, error) {
-	resp, err := http.Get("https://api.twitchinsights.net/v1/bots/online")
+type BotsResponse struct {
+	Bots  [][]interface{} `json:"bots"`
+	Total int             `json:"_total"`
+}
+
+func getBotList() (*BotsResponse, error) {
+	resp, err := http.Get("https://api.twitchinsights.net/v1/bots/all")
 	if err != nil {
-		return []byte{}, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if nil != err {
-		return []byte{}, err
+		return nil, err
 	}
-	return body, err
+	bots := BotsResponse{}
+	if err := json.Unmarshal(body, &bots); nil != err {
+		return nil, err
+	}
+	return &bots, err
 }
 
 func (s *Server) funcGet(ctx context.Context, url string) string {
