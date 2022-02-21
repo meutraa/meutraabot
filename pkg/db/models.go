@@ -23,27 +23,3 @@ type Command struct {
 	Name      string
 	Template  string
 }
-
-type Counter struct {
-	ChannelID string
-	Name      string
-	Value     int64
-}
-
-type Message struct {
-	ID        int32
-	ChannelID string
-	SenderID  string
-	CreatedAt time.Time
-	Message   string
-}
-
-type User struct {
-	ChannelID    string
-	SenderID     string
-	CreatedAt    time.Time
-	UpdatedAt    sql.NullTime
-	WordCount    int64
-	MessageCount int64
-	WatchTime    int64
-}

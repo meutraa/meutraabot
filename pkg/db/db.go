@@ -28,12 +28,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createChannelStmt, err = db.PrepareContext(ctx, createChannel); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateChannel: %w", err)
 	}
-	if q.createMessageStmt, err = db.PrepareContext(ctx, createMessage); err != nil {
-		return nil, fmt.Errorf("error preparing query CreateMessage: %w", err)
-	}
-	if q.createUserStmt, err = db.PrepareContext(ctx, createUser); err != nil {
-		return nil, fmt.Errorf("error preparing query CreateUser: %w", err)
-	}
 	if q.deleteChannelStmt, err = db.PrepareContext(ctx, deleteChannel); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteChannel: %w", err)
 	}
@@ -49,29 +43,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCommandsStmt, err = db.PrepareContext(ctx, getCommands); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCommands: %w", err)
 	}
-	if q.getCounterStmt, err = db.PrepareContext(ctx, getCounter); err != nil {
-		return nil, fmt.Errorf("error preparing query GetCounter: %w", err)
-	}
 	if q.getMatchingCommandsStmt, err = db.PrepareContext(ctx, getMatchingCommands); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMatchingCommands: %w", err)
-	}
-	if q.getMessageCountStmt, err = db.PrepareContext(ctx, getMessageCount); err != nil {
-		return nil, fmt.Errorf("error preparing query GetMessageCount: %w", err)
-	}
-	if q.getMetricsStmt, err = db.PrepareContext(ctx, getMetrics); err != nil {
-		return nil, fmt.Errorf("error preparing query GetMetrics: %w", err)
-	}
-	if q.getTopWatchersStmt, err = db.PrepareContext(ctx, getTopWatchers); err != nil {
-		return nil, fmt.Errorf("error preparing query GetTopWatchers: %w", err)
-	}
-	if q.getTopWatchersAverageStmt, err = db.PrepareContext(ctx, getTopWatchersAverage); err != nil {
-		return nil, fmt.Errorf("error preparing query GetTopWatchersAverage: %w", err)
-	}
-	if q.getWatchTimeRankStmt, err = db.PrepareContext(ctx, getWatchTimeRank); err != nil {
-		return nil, fmt.Errorf("error preparing query GetWatchTimeRank: %w", err)
-	}
-	if q.getWatchTimeRankAverageStmt, err = db.PrepareContext(ctx, getWatchTimeRankAverage); err != nil {
-		return nil, fmt.Errorf("error preparing query GetWatchTimeRankAverage: %w", err)
 	}
 	if q.isApprovedStmt, err = db.PrepareContext(ctx, isApproved); err != nil {
 		return nil, fmt.Errorf("error preparing query IsApproved: %w", err)
@@ -81,12 +54,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.unapproveStmt, err = db.PrepareContext(ctx, unapprove); err != nil {
 		return nil, fmt.Errorf("error preparing query Unapprove: %w", err)
-	}
-	if q.updateCounterStmt, err = db.PrepareContext(ctx, updateCounter); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateCounter: %w", err)
-	}
-	if q.updateMetricsStmt, err = db.PrepareContext(ctx, updateMetrics); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateMetrics: %w", err)
 	}
 	return &q, nil
 }
@@ -101,16 +68,6 @@ func (q *Queries) Close() error {
 	if q.createChannelStmt != nil {
 		if cerr := q.createChannelStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createChannelStmt: %w", cerr)
-		}
-	}
-	if q.createMessageStmt != nil {
-		if cerr := q.createMessageStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing createMessageStmt: %w", cerr)
-		}
-	}
-	if q.createUserStmt != nil {
-		if cerr := q.createUserStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing createUserStmt: %w", cerr)
 		}
 	}
 	if q.deleteChannelStmt != nil {
@@ -138,44 +95,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getCommandsStmt: %w", cerr)
 		}
 	}
-	if q.getCounterStmt != nil {
-		if cerr := q.getCounterStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getCounterStmt: %w", cerr)
-		}
-	}
 	if q.getMatchingCommandsStmt != nil {
 		if cerr := q.getMatchingCommandsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getMatchingCommandsStmt: %w", cerr)
-		}
-	}
-	if q.getMessageCountStmt != nil {
-		if cerr := q.getMessageCountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getMessageCountStmt: %w", cerr)
-		}
-	}
-	if q.getMetricsStmt != nil {
-		if cerr := q.getMetricsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getMetricsStmt: %w", cerr)
-		}
-	}
-	if q.getTopWatchersStmt != nil {
-		if cerr := q.getTopWatchersStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getTopWatchersStmt: %w", cerr)
-		}
-	}
-	if q.getTopWatchersAverageStmt != nil {
-		if cerr := q.getTopWatchersAverageStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getTopWatchersAverageStmt: %w", cerr)
-		}
-	}
-	if q.getWatchTimeRankStmt != nil {
-		if cerr := q.getWatchTimeRankStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getWatchTimeRankStmt: %w", cerr)
-		}
-	}
-	if q.getWatchTimeRankAverageStmt != nil {
-		if cerr := q.getWatchTimeRankAverageStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getWatchTimeRankAverageStmt: %w", cerr)
 		}
 	}
 	if q.isApprovedStmt != nil {
@@ -191,16 +113,6 @@ func (q *Queries) Close() error {
 	if q.unapproveStmt != nil {
 		if cerr := q.unapproveStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing unapproveStmt: %w", cerr)
-		}
-	}
-	if q.updateCounterStmt != nil {
-		if cerr := q.updateCounterStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateCounterStmt: %w", cerr)
-		}
-	}
-	if q.updateMetricsStmt != nil {
-		if cerr := q.updateMetricsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateMetricsStmt: %w", cerr)
 		}
 	}
 	return err
@@ -240,57 +152,35 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                          DBTX
-	tx                          *sql.Tx
-	approveStmt                 *sql.Stmt
-	createChannelStmt           *sql.Stmt
-	createMessageStmt           *sql.Stmt
-	createUserStmt              *sql.Stmt
-	deleteChannelStmt           *sql.Stmt
-	deleteCommandStmt           *sql.Stmt
-	getChannelsStmt             *sql.Stmt
-	getCommandStmt              *sql.Stmt
-	getCommandsStmt             *sql.Stmt
-	getCounterStmt              *sql.Stmt
-	getMatchingCommandsStmt     *sql.Stmt
-	getMessageCountStmt         *sql.Stmt
-	getMetricsStmt              *sql.Stmt
-	getTopWatchersStmt          *sql.Stmt
-	getTopWatchersAverageStmt   *sql.Stmt
-	getWatchTimeRankStmt        *sql.Stmt
-	getWatchTimeRankAverageStmt *sql.Stmt
-	isApprovedStmt              *sql.Stmt
-	setCommandStmt              *sql.Stmt
-	unapproveStmt               *sql.Stmt
-	updateCounterStmt           *sql.Stmt
-	updateMetricsStmt           *sql.Stmt
+	db                      DBTX
+	tx                      *sql.Tx
+	approveStmt             *sql.Stmt
+	createChannelStmt       *sql.Stmt
+	deleteChannelStmt       *sql.Stmt
+	deleteCommandStmt       *sql.Stmt
+	getChannelsStmt         *sql.Stmt
+	getCommandStmt          *sql.Stmt
+	getCommandsStmt         *sql.Stmt
+	getMatchingCommandsStmt *sql.Stmt
+	isApprovedStmt          *sql.Stmt
+	setCommandStmt          *sql.Stmt
+	unapproveStmt           *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                          tx,
-		tx:                          tx,
-		approveStmt:                 q.approveStmt,
-		createChannelStmt:           q.createChannelStmt,
-		createMessageStmt:           q.createMessageStmt,
-		createUserStmt:              q.createUserStmt,
-		deleteChannelStmt:           q.deleteChannelStmt,
-		deleteCommandStmt:           q.deleteCommandStmt,
-		getChannelsStmt:             q.getChannelsStmt,
-		getCommandStmt:              q.getCommandStmt,
-		getCommandsStmt:             q.getCommandsStmt,
-		getCounterStmt:              q.getCounterStmt,
-		getMatchingCommandsStmt:     q.getMatchingCommandsStmt,
-		getMessageCountStmt:         q.getMessageCountStmt,
-		getMetricsStmt:              q.getMetricsStmt,
-		getTopWatchersStmt:          q.getTopWatchersStmt,
-		getTopWatchersAverageStmt:   q.getTopWatchersAverageStmt,
-		getWatchTimeRankStmt:        q.getWatchTimeRankStmt,
-		getWatchTimeRankAverageStmt: q.getWatchTimeRankAverageStmt,
-		isApprovedStmt:              q.isApprovedStmt,
-		setCommandStmt:              q.setCommandStmt,
-		unapproveStmt:               q.unapproveStmt,
-		updateCounterStmt:           q.updateCounterStmt,
-		updateMetricsStmt:           q.updateMetricsStmt,
+		db:                      tx,
+		tx:                      tx,
+		approveStmt:             q.approveStmt,
+		createChannelStmt:       q.createChannelStmt,
+		deleteChannelStmt:       q.deleteChannelStmt,
+		deleteCommandStmt:       q.deleteCommandStmt,
+		getChannelsStmt:         q.getChannelsStmt,
+		getCommandStmt:          q.getCommandStmt,
+		getCommandsStmt:         q.getCommandsStmt,
+		getMatchingCommandsStmt: q.getMatchingCommandsStmt,
+		isApprovedStmt:          q.isApprovedStmt,
+		setCommandStmt:          q.setCommandStmt,
+		unapproveStmt:           q.unapproveStmt,
 	}
 }

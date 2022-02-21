@@ -8,7 +8,6 @@ Command (templates) are golang templates
 
 Usage|User|Mod|Channel Owner|Operator|Description
 -----|----|---|-------------|--------|-----------
-__+ban USERNAME__| | | |✓|Ban a user from all chats the bot is in
 __+leave__|✓|✓|✓|✓|Leave the caller's chat
 __+join__|✓|✓|✓|✓|Join the caller's chat
 __+get COMMAND__|✓|✓|✓|✓|Show the command template for an identifier
