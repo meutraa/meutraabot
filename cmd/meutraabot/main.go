@@ -48,6 +48,9 @@ func main() {
 
 func run() error {
 	s := Server{}
+
+	s.history = make(map[string][]string)
+
 	if err := s.ReadEnvironmentVariables(); nil != err {
 		return err
 	}
@@ -74,8 +77,33 @@ func run() error {
 	return nil
 }
 
+var tagEscapeCharacters = []struct {
+	from string
+	to   string
+}{
+	{`\s`, ` `},
+	{`\n`, ``},
+	{`\r`, ``},
+	{`\:`, `;`},
+	{`\\`, `\`},
+}
+
+func parseIRCTagValue(rawValue string) string {
+	for _, escape := range tagEscapeCharacters {
+		rawValue = strings.ReplaceAll(rawValue, escape.from, escape.to)
+	}
+	rawValue = strings.TrimSuffix(rawValue, "\\")
+	return strings.TrimSpace(rawValue)
+}
+
 func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) string {
 	text := e.Message
+
+	// Add event to history
+	if _, ok := s.history[e.Channel]; !ok {
+		s.history[e.Channel] = make([]string, 0)
+	}
+	s.history[e.Channel] = append(s.history[e.Channel], e.User.DisplayName+": "+text)
 
 	isOwner := e.User.ID == s.env.twitchOwnerID || e.User.ID == ""
 	isAdmin := (e.User.Name == e.Channel) || isOwner
@@ -86,11 +114,16 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 	command := split[0]
 	args := split[1:]
 	argCount := len(args)
-	var tmplStr string
 
-	selectedUser := firstOr(args, e.User.Name)
+	selectedUser := e.User.Name
+	isUser := false
+	// If the command only has one argument, assume it is a user (not always true)
+	if len(args) == 1 && args[0] != "" {
+		selectedUser = args[0]
+		isUser = true
+	}
 	selectedUserID := e.User.ID
-	if selectedUser != e.User.Name {
+	if isUser {
 		sUser, err := UserByName(s.twitch, selectedUser)
 		if nil == err {
 			selectedUserID = sUser.ID
@@ -106,6 +139,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		IsAdmin:        isAdmin,
 		IsOwner:        isOwner,
 		IsSub:          isSub,
+		Message:        e.Message,
 		MessageID:      e.ID,
 		BotID:          s.env.twitchUserID,
 		Command:        command,
@@ -113,7 +147,25 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		SelectedUser:   selectedUser,
 		SelectedUserID: selectedUserID,
 	}
+
+	// @badge-info=;badges=broadcaster/1,glhf-pledge/1;client-nonce=a6df18ff680fb0127ad322249b20610e;color=#FF0090;display-name=arrs;emotes=;first-msg=0;flags=;id=cbd3180a-0417-4198-b9bc-d494c2e50e98;mod=0;room-id=104222621;subscriber=0;tmi-sent-ts=1651400611411;turbo=0;user-id=104222621;user-type= :arrs!arrs@arrs.tmi.twitch.tv PRIVMSG #arrs :@meuua what are you saying?
+	// @badge-info=;badges=broadcaster/1,glhf-pledge/1;client-nonce=872b8c129f7a41b649174da609205c34;color=#FF0090;display-name=arrs;emotes=;first-msg=0;flags=;id=c4119da4-4610-436d-8136-109304fdc98d;mod=0;reply-parent-display-name=meuua;reply-parent-msg-body=You're\san\sidiot;reply-parent-msg-id=0fba547e-7a7c-4d8d-9445-424523cc1f1d;reply-parent-user-id=475675480;reply-parent-user-login=meuua;room-id=104222621;subscriber=0;tmi-sent-ts=1651400617886;turbo=0;user-id=104222621;user-type= :arrs!arrs@arrs.tmi.twitch.tv PRIVMSG #arrs :@meuua Wow, bit rude.
+
+	for _, tag := range strings.Split(e.Raw, ";") {
+		pair := strings.SplitN(tag, "=", 2)
+		if len(pair) == 2 {
+			if pair[0] == "reply-parent-user-login" {
+				data.ReplyingToUser = parseIRCTagValue(pair[1])
+			} else if pair[0] == "reply-parent-msg-body" {
+				data.ReplyingToMessage = parseIRCTagValue(pair[1])
+			} else if pair[0] == "reply-parent-user-id" {
+				data.ReplyingToUserID = parseIRCTagValue(pair[1])
+			}
+		}
+	}
+
 	functions := s.FuncMap(ctx, data, e)
+	templates := make(map[string]string)
 
 	// Built-in commands
 	switch {
@@ -136,7 +188,6 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 
 		return "/ban " + selectedUser + "\n" + selectedUser + " unapproved"
 	case command == "+leave":
-		// TODO: this seems iffy
 		if err := s.q.DeleteChannel(ctx, e.User.ID); nil != err {
 			return "failed to leave channel"
 		}
@@ -202,7 +253,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			log(data.Channel, data.User, "unable to gget "+args[0], err)
 			return ""
 		}
-		return tmpl
+		return "command: " + tmpl
 	case command == "+get" && argCount == 1:
 		tmpl, err := s.q.GetCommand(ctx, db.GetCommandParams{
 			ChannelID: e.RoomID,
@@ -212,7 +263,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			log(data.Channel, data.User, "unable to get "+args[0], err)
 			return ""
 		}
-		return tmpl
+		return "command: " + tmpl
 	case command == "+builtins":
 		return strings.Join([]string{
 			"+join",
@@ -285,7 +336,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		}
 		return fmt.Sprintf("command %v set", strs[0])
 	case command == "+test" && isMod:
-		tmplStr = strings.Join(args, " ")
+		templates["test"] = strings.Join(args, " ")
 	default:
 		message := strings.ToLower(text)
 		commands, err := s.q.GetMatchingCommands(ctx, db.GetMatchingCommandsParams{
@@ -298,8 +349,8 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			return ""
 		}
 
-		local := make([]db.GetMatchingCommandsRow, 0, 8)
-		global := make([]db.GetMatchingCommandsRow, 0, 8)
+		local := []db.GetMatchingCommandsRow{}
+		global := []db.GetMatchingCommandsRow{}
 		for _, c := range commands {
 			if c.ChannelID != "0" {
 				local = append(local, c)
@@ -308,41 +359,39 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			}
 		}
 
-		if len(local) > 1 {
-			cs := make([]string, len(local))
-			for i, c := range local {
-				cs[i] = c.Name
-			}
-			return "message matches multiple local commands: " + strings.Join(cs, seperator)
-		} else if len(local) == 1 {
-			tmplStr = local[0].Template
-		} else if len(global) > 1 {
-			cs := make([]string, len(global))
-			for i, c := range global {
-				cs[i] = c.Name
-			}
-			return "message matches multiple global commands: " + strings.Join(cs, seperator)
-		} else if len(global) == 1 {
-			tmplStr = global[0].Template
+		for _, template := range global {
+			templates[template.Name] = template.Template
+		}
+		for _, template := range local {
+			templates[template.Name] = template.Template
 		}
 	}
 
-	if tmplStr == "" {
+	if len(templates) == 0 {
 		return ""
 	}
 
+	str := strings.Builder{}
+	i := 0
 	// Execute command
-	tmpl, err := template.New(text).Funcs(functions).Parse(tmplStr)
-	if err != nil {
-		return "command template is broken: " + err.Error()
+	for _, tplt := range templates {
+		if i > 0 {
+			str.WriteByte('\n')
+		}
+		tmpl, err := template.New(text).Funcs(functions).Parse(tplt)
+		if err != nil {
+			return "command template is broken: " + err.Error()
+		}
+
+		out := bytes.Buffer{}
+		if err := tmpl.Execute(&out, data); nil != err {
+			return "command executed wrongly: " + err.Error()
+		}
+		str.WriteString(out.String())
+		i++
 	}
 
-	var out bytes.Buffer
-	if err := tmpl.Execute(&out, data); nil != err {
-		return "command executed wrongly: " + err.Error()
-	}
-
-	return out.String()
+	return str.String()
 }
 
 func splitRecursive(str string) []string {

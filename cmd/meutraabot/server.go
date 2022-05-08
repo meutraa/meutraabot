@@ -14,22 +14,21 @@ import (
 )
 
 type Server struct {
-	irc    *irc.Client
-	conn   *sql.DB
-	twitch *helix.Client
-	q      *db.Queries
-	env    *Environment
+	irc     *irc.Client
+	conn    *sql.DB
+	twitch  *helix.Client
+	q       *db.Queries
+	env     *Environment
+	history map[string][]string
 }
 
 type Environment struct {
 	twitchUserID             string
 	twitchOwnerID            string
 	twitchOauthToken         string
-	twitchChallengeSecret    string
-	twitchChallengeURL       string
 	twitchClientSecret       string
 	twitchClientID           string
-	twitchSubListen          string
+	openaiKey                string
 	postgresConnectionString string
 }
 
@@ -226,25 +225,21 @@ func (s *Server) checkUser(bots *BotsResponse, channel, username string) {
 func (s *Server) ReadEnvironmentVariables() error {
 	// Read our username from the environment, end if failure
 	s.env = &Environment{}
-	s.env.twitchSubListen = os.Getenv("TWITCH_SUB_LISTEN")
 	s.env.twitchOauthToken = os.Getenv("TWITCH_OAUTH_TOKEN")
 	s.env.twitchClientID = os.Getenv("TWITCH_CLIENT_ID")
 	s.env.twitchClientSecret = os.Getenv("TWITCH_CLIENT_SECRET")
-	s.env.twitchChallengeSecret = os.Getenv("TWITCH_CHALLENGE_SECRET")
-	s.env.twitchChallengeURL = os.Getenv("TWITCH_CHALLENGE_URL")
 	s.env.postgresConnectionString = os.Getenv("POSTGRES_CONNECTION_STRING")
+	s.env.openaiKey = os.Getenv("OPENAI_KEY")
 	s.env.twitchUserID = os.Getenv("TWITCH_USER_ID")
 	s.env.twitchOwnerID = os.Getenv("TWITCH_OWNER_ID")
 
 	if s.env.twitchUserID == "" ||
 		s.env.twitchOwnerID == "" ||
-		s.env.twitchSubListen == "" ||
 		s.env.postgresConnectionString == "" ||
-		s.env.twitchChallengeURL == "" ||
-		s.env.twitchChallengeSecret == "" ||
 		s.env.twitchClientSecret == "" ||
 		s.env.twitchClientID == "" ||
-		s.env.twitchOauthToken == "" {
+		s.env.twitchOauthToken == "" ||
+		s.env.openaiKey == "" {
 		return errors.New("missing environment variable")
 	}
 	return nil
