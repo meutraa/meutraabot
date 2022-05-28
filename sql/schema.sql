@@ -1,5 +1,9 @@
 CREATE TABLE channels (
   channel_id text NOT NULL,
+  autoreply_enabled boolean NOT NULL DEFAULT false,
+  autoreply_frequency float NOT NULL DEFAULT 2,
+  reply_safety int NOT NULL DEFAULT 2,
+  openai_token text,
   created_at timestamp with time zone NOT NULL,
   updated_at timestamp with time zone
 );

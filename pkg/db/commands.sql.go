@@ -74,6 +74,41 @@ func (q *Queries) GetCommands(ctx context.Context, channelID string) ([]string, 
 	return items, nil
 }
 
+const getGlobalCommands = `-- name: GetGlobalCommands :many
+SELECT name, template
+  FROM commands
+  WHERE channel_id = '0'
+  ORDER BY name ASC
+`
+
+type GetGlobalCommandsRow struct {
+	Name     string
+	Template string
+}
+
+func (q *Queries) GetGlobalCommands(ctx context.Context) ([]GetGlobalCommandsRow, error) {
+	rows, err := q.query(ctx, q.getGlobalCommandsStmt, getGlobalCommands)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetGlobalCommandsRow
+	for rows.Next() {
+		var i GetGlobalCommandsRow
+		if err := rows.Scan(&i.Name, &i.Template); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMatchingCommands = `-- name: GetMatchingCommands :many
 SELECT
     template,

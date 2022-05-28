@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
 const createChannel = `-- name: CreateChannel :exec
@@ -28,6 +29,25 @@ DELETE FROM channels
 func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
 	_, err := q.exec(ctx, q.deleteChannelStmt, deleteChannel, channelID)
 	return err
+}
+
+const getChannel = `-- name: GetChannel :one
+SELECT channel_id, autoreply_enabled, autoreply_frequency, reply_safety, openai_token, created_at, updated_at FROM channels WHERE channel_id = $1
+`
+
+func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, error) {
+	row := q.queryRow(ctx, q.getChannelStmt, getChannel, channelID)
+	var i Channel
+	err := row.Scan(
+		&i.ChannelID,
+		&i.AutoreplyEnabled,
+		&i.AutoreplyFrequency,
+		&i.ReplySafety,
+		&i.OpenaiToken,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getChannels = `-- name: GetChannels :many
@@ -55,4 +75,47 @@ func (q *Queries) GetChannels(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateChannel = `-- name: UpdateChannel :exec
+UPDATE channels
+ SET autoreply_enabled = $2,
+  autoreply_frequency = $3,
+  reply_safety = $4,
+  updated_at = now()
+ WHERE channel_id = $1
+`
+
+type UpdateChannelParams struct {
+	ChannelID          string
+	AutoreplyEnabled   bool
+	AutoreplyFrequency float64
+	ReplySafety        int32
+}
+
+func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) error {
+	_, err := q.exec(ctx, q.updateChannelStmt, updateChannel,
+		arg.ChannelID,
+		arg.AutoreplyEnabled,
+		arg.AutoreplyFrequency,
+		arg.ReplySafety,
+	)
+	return err
+}
+
+const updateChannelToken = `-- name: UpdateChannelToken :exec
+UPDATE channels
+ SET openai_token = $2,
+  updated_at = now()
+ WHERE channel_id = $1
+`
+
+type UpdateChannelTokenParams struct {
+	ChannelID   string
+	OpenaiToken sql.NullString
+}
+
+func (q *Queries) UpdateChannelToken(ctx context.Context, arg UpdateChannelTokenParams) error {
+	_, err := q.exec(ctx, q.updateChannelTokenStmt, updateChannelToken, arg.ChannelID, arg.OpenaiToken)
+	return err
 }

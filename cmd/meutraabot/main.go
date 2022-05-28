@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"strings"
@@ -22,8 +23,6 @@ type Message struct {
 	Channel string
 	Body    string
 }
-
-const seperator = " "
 
 func log(channel, username, message string, err error) {
 	fmt.Printf("[%v]", channel)
@@ -49,7 +48,7 @@ func main() {
 func run() error {
 	s := Server{}
 
-	s.history = make(map[string][]string)
+	s.history = make(map[string][]*irc.PrivateMessage)
 
 	if err := s.ReadEnvironmentVariables(); nil != err {
 		return err
@@ -61,6 +60,8 @@ func run() error {
 	defer func() {
 		s.Close()
 	}()
+
+	s.PrepareAPI()
 
 	if err := s.PrepareTwitchClient(); nil != err {
 		return err
@@ -77,33 +78,8 @@ func run() error {
 	return nil
 }
 
-var tagEscapeCharacters = []struct {
-	from string
-	to   string
-}{
-	{`\s`, ` `},
-	{`\n`, ``},
-	{`\r`, ``},
-	{`\:`, `;`},
-	{`\\`, `\`},
-}
-
-func parseIRCTagValue(rawValue string) string {
-	for _, escape := range tagEscapeCharacters {
-		rawValue = strings.ReplaceAll(rawValue, escape.from, escape.to)
-	}
-	rawValue = strings.TrimSuffix(rawValue, "\\")
-	return strings.TrimSpace(rawValue)
-}
-
 func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) string {
 	text := e.Message
-
-	// Add event to history
-	if _, ok := s.history[e.Channel]; !ok {
-		s.history[e.Channel] = make([]string, 0)
-	}
-	s.history[e.Channel] = append(s.history[e.Channel], e.User.DisplayName+": "+text)
 
 	isOwner := e.User.ID == s.env.twitchOwnerID || e.User.ID == ""
 	isAdmin := (e.User.Name == e.Channel) || isOwner
@@ -147,21 +123,11 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		SelectedUser:   selectedUser,
 		SelectedUserID: selectedUserID,
 	}
-
-	// @badge-info=;badges=broadcaster/1,glhf-pledge/1;client-nonce=a6df18ff680fb0127ad322249b20610e;color=#FF0090;display-name=arrs;emotes=;first-msg=0;flags=;id=cbd3180a-0417-4198-b9bc-d494c2e50e98;mod=0;room-id=104222621;subscriber=0;tmi-sent-ts=1651400611411;turbo=0;user-id=104222621;user-type= :arrs!arrs@arrs.tmi.twitch.tv PRIVMSG #arrs :@meuua what are you saying?
-	// @badge-info=;badges=broadcaster/1,glhf-pledge/1;client-nonce=872b8c129f7a41b649174da609205c34;color=#FF0090;display-name=arrs;emotes=;first-msg=0;flags=;id=c4119da4-4610-436d-8136-109304fdc98d;mod=0;reply-parent-display-name=meuua;reply-parent-msg-body=You're\san\sidiot;reply-parent-msg-id=0fba547e-7a7c-4d8d-9445-424523cc1f1d;reply-parent-user-id=475675480;reply-parent-user-login=meuua;room-id=104222621;subscriber=0;tmi-sent-ts=1651400617886;turbo=0;user-id=104222621;user-type= :arrs!arrs@arrs.tmi.twitch.tv PRIVMSG #arrs :@meuua Wow, bit rude.
-
-	for _, tag := range strings.Split(e.Raw, ";") {
-		pair := strings.SplitN(tag, "=", 2)
-		if len(pair) == 2 {
-			if pair[0] == "reply-parent-user-login" {
-				data.ReplyingToUser = parseIRCTagValue(pair[1])
-			} else if pair[0] == "reply-parent-msg-body" {
-				data.ReplyingToMessage = parseIRCTagValue(pair[1])
-			} else if pair[0] == "reply-parent-user-id" {
-				data.ReplyingToUserID = parseIRCTagValue(pair[1])
-			}
-		}
+	if e.Reply != nil {
+		data.ReplyingToUser = e.Reply.ParentUserLogin
+		data.ReplyingToUserID = e.Reply.ParentUserID
+		data.ReplyingToMessage = e.Reply.ParentMsgBody
+		data.ReplyingToMessageID = e.Reply.ParentMsgID
 	}
 
 	functions := s.FuncMap(ctx, data, e)
@@ -237,13 +203,13 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		if nil != err && err != sql.ErrNoRows {
 			return "unable to get commands"
 		}
-		return strings.Join(commands, seperator)
+		return strings.Join(commands, " ")
 	case command == "+list":
 		commands, err := s.q.GetCommands(ctx, e.RoomID)
 		if nil != err && err != sql.ErrNoRows {
 			return "unable to get commands"
 		}
-		return strings.Join(commands, seperator)
+		return strings.Join(commands, " ")
 	case command == "+gget" && argCount == 1:
 		tmpl, err := s.q.GetCommand(ctx, db.GetCommandParams{
 			ChannelID: "0",
@@ -282,17 +248,18 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			"+data",
 			"+test",
 			"+builtins",
-		}, seperator)
+		}, " ")
 	case command == "+functions":
 		return strings.Join([]string{
-			"age()",
-			"counter(name)",
-			"incCounter(name, number)",
+			"reply(message)",
+			"user()",
+			"userfollow()",
+			"stream()",
+			"random(max)",
+			"duration(time)",
 			"get(url)",
 			"json(key, json)",
-			"followage()",
-			"uptime()",
-		}, seperator)
+		}, " ")
 	case command == "+gunset" && isOwner && argCount == 1:
 		if err := s.q.DeleteCommand(ctx, db.DeleteCommandParams{
 			ChannelID: "0",
@@ -368,6 +335,77 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 	}
 
 	if len(templates) == 0 {
+		// get the channel settings
+		settings, err := s.q.GetChannel(ctx, data.ChannelID)
+		if err != nil {
+			log(data.Channel, data.User, "unable to get channel settings", err)
+			return ""
+		}
+
+		if !settings.AutoreplyEnabled {
+			return ""
+		}
+
+		// Not responding, but might send random message
+		history, ok := s.history[e.Channel]
+		if !ok {
+			return ""
+		}
+
+		// if meuua is involved in this message chain
+		if data.ReplyingToMessageID != "" {
+			for _, m := range history {
+				if m.Reply != nil && m.Reply.ParentMsgID == data.ReplyingToMessageID {
+					if m.User.ID == s.env.twitchUserID {
+						return "reply::delay::" + s.funcReplyAuto(ctx, data, data.Message, false, func() string { return "" })
+					}
+				}
+			}
+		}
+
+		// find how many messages it has been since meuua last said something
+		count := 0
+		totalMessages := 0
+		botMessages := 0
+		activeUsers := map[string]bool{}
+		messagesChecked := 0
+		for i := len(history) - 1; i >= 0; i-- {
+			isBot := history[i].User.ID == s.env.twitchUserID
+			if isBot && count == 0 {
+				count = len(history) - i
+			}
+
+			// if message is less than 10 minutes old, count it
+			if messagesChecked < 50 {
+				activeUsers[history[i].User.DisplayName] = true
+				totalMessages++
+				if isBot {
+					botMessages++
+				}
+			} else {
+				break
+			}
+		}
+
+		if count == 0 {
+			count = totalMessages
+		}
+
+		if count > 1 && float64(botMessages) < float64(totalMessages)/(float64(len(activeUsers)+2)*settings.AutoreplyFrequency) {
+			res := s.funcReplyAuto(ctx, data, e.Message, true, func() string {
+				// get last ten messages from history
+				if len(history) > 6 {
+					history = history[len(history)-6:]
+				}
+				p := ""
+				for _, m := range history {
+					p += m.User.DisplayName + ": " + m.Message + "\n"
+				}
+				return p
+			})
+			return res
+		}
+
 		return ""
 	}
 
@@ -405,6 +443,12 @@ func splitRecursive(str string) []string {
 }
 
 func (s *Server) handleMessage(e irc.PrivateMessage) {
+	// Add event to history
+	if _, ok := s.history[e.Channel]; !ok {
+		s.history[e.Channel] = make([]*irc.PrivateMessage, 0)
+	}
+	s.history[e.Channel] = append(s.history[e.Channel], &e)
+
 	if s.env.twitchUserID == e.User.ID {
 		return
 	}
@@ -418,12 +462,57 @@ func (s *Server) handleMessage(e irc.PrivateMessage) {
 		log(e.Channel, "self", res, nil)
 	}
 	res = strings.ReplaceAll(res, "\\n", "\n")
-	for _, message := range strings.Split(res, "\n") {
-		for _, parts := range splitRecursive(strings.TrimSpace(message)) {
-			if parts == "" {
-				continue
+	go func(res string) {
+		for _, message := range strings.Split(res, "\n") {
+			for _, parts := range splitRecursive(strings.TrimSpace(message)) {
+				if parts == "" {
+					continue
+				}
+				reply := false
+				if strings.HasPrefix(parts, "reply::") {
+					parts = strings.TrimPrefix(parts, "reply::")
+					reply = true
+				}
+				if strings.HasPrefix(parts, "delay::") {
+					parts = strings.TrimPrefix(parts, "delay::")
+					// calculate time to type parts in seconds at 80wpm
+					chars := len(parts)
+					seconds := int(math.Round(float64(chars) / 5))
+
+					time.Sleep(time.Second * time.Duration(seconds))
+				}
+				if reply {
+					if strings.HasPrefix(parts, "@") && strings.Contains(parts, " ") {
+						// remove the first word from parts
+						parts = strings.SplitN(parts, " ", 2)[1]
+					}
+				}
+				add := irc.PrivateMessage{
+					Channel: e.Channel,
+					Reply:   &irc.Reply{},
+					Message: parts,
+					User: irc.User{
+						Name:        s.env.twitchUserName,
+						DisplayName: s.env.twitchUserName,
+						ID:          s.env.twitchUserID,
+					},
+				}
+				if reply {
+					add.Reply = &irc.Reply{
+						ParentMsgID:       e.ID,
+						ParentUserID:      e.User.ID,
+						ParentUserLogin:   e.User.Name,
+						ParentDisplayName: e.User.DisplayName,
+						ParentMsgBody:     e.Message,
+					}
+				}
+				s.history[e.Channel] = append(s.history[e.Channel], &add)
+				if reply {
+					s.irc.Reply(e.Channel, e.ID, parts)
+				} else {
+					s.irc.Say(e.Channel, parts)
+				}
 			}
-			s.irc.Say(e.Channel, parts)
 		}
-	}
+	}(res)
 }

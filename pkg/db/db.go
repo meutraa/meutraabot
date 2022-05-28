@@ -36,6 +36,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteCommandStmt, err = db.PrepareContext(ctx, deleteCommand); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteCommand: %w", err)
 	}
+	if q.getChannelStmt, err = db.PrepareContext(ctx, getChannel); err != nil {
+		return nil, fmt.Errorf("error preparing query GetChannel: %w", err)
+	}
 	if q.getChannelsStmt, err = db.PrepareContext(ctx, getChannels); err != nil {
 		return nil, fmt.Errorf("error preparing query GetChannels: %w", err)
 	}
@@ -44,6 +47,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getCommandsStmt, err = db.PrepareContext(ctx, getCommands); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCommands: %w", err)
+	}
+	if q.getGlobalCommandsStmt, err = db.PrepareContext(ctx, getGlobalCommands); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGlobalCommands: %w", err)
 	}
 	if q.getMatchingCommandsStmt, err = db.PrepareContext(ctx, getMatchingCommands); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMatchingCommands: %w", err)
@@ -56,6 +62,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.unapproveStmt, err = db.PrepareContext(ctx, unapprove); err != nil {
 		return nil, fmt.Errorf("error preparing query Unapprove: %w", err)
+	}
+	if q.updateChannelStmt, err = db.PrepareContext(ctx, updateChannel); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateChannel: %w", err)
+	}
+	if q.updateChannelTokenStmt, err = db.PrepareContext(ctx, updateChannelToken); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateChannelToken: %w", err)
 	}
 	return &q, nil
 }
@@ -82,6 +94,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteCommandStmt: %w", cerr)
 		}
 	}
+	if q.getChannelStmt != nil {
+		if cerr := q.getChannelStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getChannelStmt: %w", cerr)
+		}
+	}
 	if q.getChannelsStmt != nil {
 		if cerr := q.getChannelsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getChannelsStmt: %w", cerr)
@@ -95,6 +112,11 @@ func (q *Queries) Close() error {
 	if q.getCommandsStmt != nil {
 		if cerr := q.getCommandsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getCommandsStmt: %w", cerr)
+		}
+	}
+	if q.getGlobalCommandsStmt != nil {
+		if cerr := q.getGlobalCommandsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGlobalCommandsStmt: %w", cerr)
 		}
 	}
 	if q.getMatchingCommandsStmt != nil {
@@ -115,6 +137,16 @@ func (q *Queries) Close() error {
 	if q.unapproveStmt != nil {
 		if cerr := q.unapproveStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing unapproveStmt: %w", cerr)
+		}
+	}
+	if q.updateChannelStmt != nil {
+		if cerr := q.updateChannelStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateChannelStmt: %w", cerr)
+		}
+	}
+	if q.updateChannelTokenStmt != nil {
+		if cerr := q.updateChannelTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateChannelTokenStmt: %w", cerr)
 		}
 	}
 	return err
@@ -160,13 +192,17 @@ type Queries struct {
 	createChannelStmt       *sql.Stmt
 	deleteChannelStmt       *sql.Stmt
 	deleteCommandStmt       *sql.Stmt
+	getChannelStmt          *sql.Stmt
 	getChannelsStmt         *sql.Stmt
 	getCommandStmt          *sql.Stmt
 	getCommandsStmt         *sql.Stmt
+	getGlobalCommandsStmt   *sql.Stmt
 	getMatchingCommandsStmt *sql.Stmt
 	isApprovedStmt          *sql.Stmt
 	setCommandStmt          *sql.Stmt
 	unapproveStmt           *sql.Stmt
+	updateChannelStmt       *sql.Stmt
+	updateChannelTokenStmt  *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -177,12 +213,16 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createChannelStmt:       q.createChannelStmt,
 		deleteChannelStmt:       q.deleteChannelStmt,
 		deleteCommandStmt:       q.deleteCommandStmt,
+		getChannelStmt:          q.getChannelStmt,
 		getChannelsStmt:         q.getChannelsStmt,
 		getCommandStmt:          q.getCommandStmt,
 		getCommandsStmt:         q.getCommandsStmt,
+		getGlobalCommandsStmt:   q.getGlobalCommandsStmt,
 		getMatchingCommandsStmt: q.getMatchingCommandsStmt,
 		isApprovedStmt:          q.isApprovedStmt,
 		setCommandStmt:          q.setCommandStmt,
 		unapproveStmt:           q.unapproveStmt,
+		updateChannelStmt:       q.updateChannelStmt,
+		updateChannelTokenStmt:  q.updateChannelTokenStmt,
 	}
 }

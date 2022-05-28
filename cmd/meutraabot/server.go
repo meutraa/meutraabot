@@ -19,10 +19,11 @@ type Server struct {
 	twitch  *helix.Client
 	q       *db.Queries
 	env     *Environment
-	history map[string][]string
+	history map[string][]*irc.PrivateMessage
 }
 
 type Environment struct {
+	twitchUserName           string
 	twitchUserID             string
 	twitchOwnerID            string
 	twitchOauthToken         string
@@ -79,6 +80,13 @@ func (s *Server) PrepareTwitchClient() error {
 
 	client.SetAppAccessToken(resp.Data.AccessToken)
 	s.twitch = client
+
+	bot, err := User(s.twitch, s.env.twitchUserID)
+	if nil != err {
+		return errors.Wrap(err, "unable to find user for id "+s.env.twitchUserID)
+	}
+
+	s.env.twitchUserName = bot.DisplayName
 
 	return nil
 }
@@ -193,7 +201,6 @@ func (s *Server) checkUser(bots *BotsResponse, channel, username string) {
 		return
 	}
 	if approved > 0 {
-		log(channel, username, "already approved", nil)
 		return
 	}
 	for _, bot := range bots.Bots {

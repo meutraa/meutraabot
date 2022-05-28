@@ -23,6 +23,12 @@ SELECT name
   WHERE channel_id = $1
   ORDER BY name ASC;
 
+-- name: GetGlobalCommands :many
+SELECT name, template
+  FROM commands
+  WHERE channel_id = '0'
+  ORDER BY name ASC;
+
 -- name: DeleteCommand :exec
 DELETE FROM commands
   WHERE channel_id = $1

@@ -15,9 +15,13 @@ type Approval struct {
 }
 
 type Channel struct {
-	ChannelID string
-	CreatedAt time.Time
-	UpdatedAt sql.NullTime
+	ChannelID          string
+	AutoreplyEnabled   bool
+	AutoreplyFrequency float64
+	ReplySafety        int32
+	OpenaiToken        sql.NullString
+	CreatedAt          time.Time
+	UpdatedAt          sql.NullTime
 }
 
 type Command struct {

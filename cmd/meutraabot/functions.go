@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -20,24 +21,25 @@ import (
 )
 
 type Data struct {
-	User              string   `json:".User"`
-	UserID            string   `json:".UserID"`
-	Channel           string   `json:".Channel"`
-	ChannelID         string   `json:".ChannelID"`
-	Message           string   `json:".Message"`
-	MessageID         string   `json:".MessageID"`
-	IsMod             bool     `json:".IsMod"`
-	IsOwner           bool     `json:".IsOwner"`
-	IsAdmin           bool     `json:".IsAdmin"`
-	IsSub             bool     `json:".IsSub"`
-	BotID             string   `json:".BotID"`
-	Command           string   `json:".Command"`
-	Arg               []string `json:".Arg"`
-	SelectedUser      string   `json:".SelectedUser"`
-	SelectedUserID    string   `json:".SelectedUserID"`
-	ReplyingToUser    string   `json:".ReplyingToUser"`
-	ReplyingToUserID  string   `json:".ReplyingToUserID"`
-	ReplyingToMessage string   `json:".ReplyingToMessage"`
+	User                string   `json:".User"`
+	UserID              string   `json:".UserID"`
+	Channel             string   `json:".Channel"`
+	ChannelID           string   `json:".ChannelID"`
+	Message             string   `json:".Message"`
+	MessageID           string   `json:".MessageID"`
+	IsMod               bool     `json:".IsMod"`
+	IsOwner             bool     `json:".IsOwner"`
+	IsAdmin             bool     `json:".IsAdmin"`
+	IsSub               bool     `json:".IsSub"`
+	BotID               string   `json:".BotID"`
+	Command             string   `json:".Command"`
+	Arg                 []string `json:".Arg"`
+	SelectedUser        string   `json:".SelectedUser"`
+	SelectedUserID      string   `json:".SelectedUserID"`
+	ReplyingToUser      string   `json:".ReplyingToUser"`
+	ReplyingToUserID    string   `json:".ReplyingToUserID"`
+	ReplyingToMessage   string   `json:".ReplyingToMessage"`
+	ReplyingToMessageID string   `json:".ReplyingToMessageID"`
 }
 
 func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) template.FuncMap {
@@ -135,61 +137,135 @@ func (s *Server) funcRandom(ctx context.Context, d Data, max int) string {
 }
 
 func (s *Server) funcReply(ctx context.Context, d Data, message string) string {
-	// read approvelist file
-	log(d.Channel, d.User, "reading approvelist", nil)
-	approvelist, err := ioutil.ReadFile("approvelist")
+	return "reply::delay::" + s.funcReplyAuto(ctx, d, message, false, func() string { return "" })
+}
+
+func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useCustomPrompt bool, prompt func() string) string {
+	// get the channel settings
+	settings, err := s.q.GetChannel(ctx, d.ChannelID)
 	if err != nil {
-		log(d.Channel, d.User, "unable to read approvelist file", err)
+		log(d.Channel, d.User, "unable to get channel settings", err)
 		return ""
 	}
 
-	// check if channel is in approve list
-	channels := strings.Split(string(approvelist), "\n")
-	// check if channel is in approve list
-	found := false
-	for _, channel := range channels {
-		if channel == d.Channel {
-			log(d.Channel, d.User, "channel is in approve list", nil)
-			found = true
+	// Check if token matches valid regex
+	if !settings.OpenaiToken.Valid || !regexp.MustCompile(`^sk-\w{48}$`).MatchString(settings.OpenaiToken.String) {
+		return ""
+	}
+
+	channelData, err := s.Stream(ctx, d.ChannelID)
+	if err != nil {
+		log(d.Channel, d.User, "unable to get stream data", err)
+	}
+
+	safety := ""
+	switch settings.ReplySafety {
+	case 0:
+		safety = "a very friendly viewer"
+	case 1:
+		safety = "a friendly, yet sassy viewer"
+	case 2:
+		safety = "an opinionated, sassy, but friendly viewer"
+	case 3:
+		safety = "an opinionated, sassy viewer"
+	}
+
+	p := "Meuua is " + safety + " in " + d.Channel + "'s twitch stream"
+	if err == nil {
+		p += " (" + channelData.GameName + " - " + channelData.Title + ")"
+	}
+	p += " chat replying to " + d.User + ".\n\n"
+
+	if useCustomPrompt {
+		p += prompt()
+	} else {
+		if d.ReplyingToMessage != "" {
+			// find all the messages in this thread
+			history, ok := s.history[d.Channel]
+			if ok {
+				messages := []string{}
+				for _, message := range history {
+					messageStr := message.Message
+					// twitch is stupid and replies are to themself
+					if strings.HasPrefix(messageStr, "@"+message.User.Name+" ") {
+						messageStr = strings.Replace(messageStr, "@"+message.User.Name+" ", "", 1)
+					}
+					if message.ID == d.ReplyingToMessageID {
+						messages = append(messages, message.User.Name+": "+messageStr+"\n")
+					}
+					if message.Reply == nil {
+						continue
+					}
+					if message.Reply.ParentMsgID == d.ReplyingToMessageID {
+						messages = append(messages, message.User.Name+": "+messageStr+"\n")
+					}
+				}
+				// if messages is more than 5, only show the last 5
+				if len(messages) > 5 {
+					messages = messages[len(messages)-5:]
+				}
+				for _, message := range messages {
+					p += message
+				}
+			}
+		} else {
+			p += d.User + ": " + d.Message + "\n"
 		}
 	}
+	p += "meuua:"
 
-	if !found {
-		log(d.Channel, d.User, "channel not in approvelist", nil)
-		return ""
-	}
-
-	prompt := "Meuua is an opinionated, sassy viewer in " + d.Channel + "'s twitch stream chat replying to " + d.User + ".\n\n"
-
-	if d.ReplyingToMessage != "" {
-		prompt += d.ReplyingToUser + ": " + d.ReplyingToMessage + "\n"
-	}
-	prompt += d.User + ": " + message + "\n"
-	prompt += "meuua:"
-
-	log(d.Channel, d.User, prompt, nil)
+	log(d.Channel, d.User, p, nil)
 
 	data := CompletionRequest{
-		Prompt:           prompt,
-		MaxTokens:        60,
-		FrequencyPenalty: 1.0,
-		PresencePenalty:  1.0,
+		Prompt:           p,
+		MaxTokens:        64,
+		FrequencyPenalty: 2.0,
+		PresencePenalty:  2.0,
 		Temperature:      1.0,
 		N:                1,
-		Stop:             ":",
-		User:             d.Channel,
+		TopP:             1.0,
+		LogitBias: map[string]int{
+			"19091": -100, // " viewer"
+			"1177":  -100, // view
+			"13120": -100, // friendly
+			"8030":  -100, // " friendly"
+			"1545":  -100, // " friend"
+			"6726":  -100, // friend
+			"33757": -100, // avage
+			"562":   -100, // ass
+			"4107":  -100, // asy
+			"11720": -100, // assy
+			"4459":  -100, // " opinion"
+			"9317":  -100, // " opinions"
+		},
+		Stop: ":",
+		User: d.Channel,
 	}
 	jsonData, err := json.Marshal(data)
+	log(d.Channel, d.User, "sending completion request"+string(jsonData), nil)
 	if nil != err {
 		log(d.Channel, d.User, "unable to do marshal ai request", err)
 		return ""
 	}
+
+	// last chance to check that meuua has not already replied
+	hist, okay := s.history[d.Channel]
+	if okay && len(hist) > 0 && hist[len(hist)-1].User.ID == s.env.twitchUserID {
+		log(d.Channel, d.User, "was last person to respond, so not doing completion request", nil)
+		return ""
+	}
+
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/engines/text-davinci-002/completions", bytes.NewBuffer(jsonData))
 	if nil != err {
 		log(d.Channel, d.User, "unable to create completion request", err)
 		return ""
 	}
-	req.Header.Set("Authorization", "Bearer "+s.env.openaiKey)
+
+	if settings.OpenaiToken.Valid {
+		req.Header.Set("Authorization", "Bearer "+settings.OpenaiToken.String)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+s.env.openaiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -229,19 +305,11 @@ func (s *Server) funcReply(ctx context.Context, d Data, message string) string {
 }
 
 func (s *Server) funcStream(ctx context.Context, d Data) string {
-	resp, err := s.twitch.GetStreams(&helix.StreamsParams{
-		UserIDs: []string{d.SelectedUserID},
-		First:   1,
-	})
+	stream, err := s.Stream(ctx, d.ChannelID)
 	if err != nil {
-		log(d.Channel, d.User, "unable to get stream "+d.SelectedUser, err)
+		log(d.Channel, d.User, "unable to get stream information for "+d.Channel, err)
 		return ""
 	}
-	if len(resp.Data.Streams) == 0 {
-		log(d.Channel, d.User, "no stream found for "+d.SelectedUser, err)
-		return ""
-	}
-	stream := resp.Data.Streams[0]
 
 	data, err := json.Marshal(stream)
 	if err != nil {
@@ -249,6 +317,20 @@ func (s *Server) funcStream(ctx context.Context, d Data) string {
 		return ""
 	}
 	return string(data)
+}
+
+func (s *Server) Stream(ctx context.Context, userId string) (helix.Stream, error) {
+	resp, err := s.twitch.GetStreams(&helix.StreamsParams{
+		UserIDs: []string{userId},
+		First:   1,
+	})
+	if err != nil {
+		return helix.Stream{}, err
+	}
+	if len(resp.Data.Streams) == 0 {
+		return helix.Stream{}, errors.New("unable to find stream for user " + userId)
+	}
+	return resp.Data.Streams[0], nil
 }
 
 func (s *Server) funcDuration(ctx context.Context, d Data, startTime string) string {
