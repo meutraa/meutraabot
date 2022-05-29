@@ -26,6 +26,39 @@ func (q *Queries) Approve(ctx context.Context, arg ApproveParams) error {
 	return err
 }
 
+const getApprovals = `-- name: GetApprovals :many
+SELECT
+  channel_id, user_id
+FROM
+  approvals
+WHERE
+  channel_id = $1
+ORDER BY user_id DESC
+`
+
+func (q *Queries) GetApprovals(ctx context.Context, channelID string) ([]Approval, error) {
+	rows, err := q.query(ctx, q.getApprovalsStmt, getApprovals, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Approval
+	for rows.Next() {
+		var i Approval
+		if err := rows.Scan(&i.ChannelID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const isApproved = `-- name: IsApproved :one
 SELECT
   COUNT(*)

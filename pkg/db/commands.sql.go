@@ -74,27 +74,27 @@ func (q *Queries) GetCommands(ctx context.Context, channelID string) ([]string, 
 	return items, nil
 }
 
-const getGlobalCommands = `-- name: GetGlobalCommands :many
+const getCommandsByID = `-- name: GetCommandsByID :many
 SELECT name, template
   FROM commands
-  WHERE channel_id = '0'
+  WHERE channel_id = $1
   ORDER BY name ASC
 `
 
-type GetGlobalCommandsRow struct {
+type GetCommandsByIDRow struct {
 	Name     string
 	Template string
 }
 
-func (q *Queries) GetGlobalCommands(ctx context.Context) ([]GetGlobalCommandsRow, error) {
-	rows, err := q.query(ctx, q.getGlobalCommandsStmt, getGlobalCommands)
+func (q *Queries) GetCommandsByID(ctx context.Context, channelID string) ([]GetCommandsByIDRow, error) {
+	rows, err := q.query(ctx, q.getCommandsByIDStmt, getCommandsByID, channelID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetGlobalCommandsRow
+	var items []GetCommandsByIDRow
 	for rows.Next() {
-		var i GetGlobalCommandsRow
+		var i GetCommandsByIDRow
 		if err := rows.Scan(&i.Name, &i.Template); err != nil {
 			return nil, err
 		}

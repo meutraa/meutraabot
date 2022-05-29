@@ -2,7 +2,7 @@
 SELECT channel_id FROM channels;
 
 -- name: GetChannel :one
-SELECT * FROM channels WHERE channel_id = $1;
+SELECT * FROM channels WHERE channel_id = $1 ORDER BY created_at DESC;
 
 -- name: UpdateChannel :exec
 UPDATE channels

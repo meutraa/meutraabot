@@ -36,6 +36,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteCommandStmt, err = db.PrepareContext(ctx, deleteCommand); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteCommand: %w", err)
 	}
+	if q.getApprovalsStmt, err = db.PrepareContext(ctx, getApprovals); err != nil {
+		return nil, fmt.Errorf("error preparing query GetApprovals: %w", err)
+	}
 	if q.getChannelStmt, err = db.PrepareContext(ctx, getChannel); err != nil {
 		return nil, fmt.Errorf("error preparing query GetChannel: %w", err)
 	}
@@ -48,8 +51,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCommandsStmt, err = db.PrepareContext(ctx, getCommands); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCommands: %w", err)
 	}
-	if q.getGlobalCommandsStmt, err = db.PrepareContext(ctx, getGlobalCommands); err != nil {
-		return nil, fmt.Errorf("error preparing query GetGlobalCommands: %w", err)
+	if q.getCommandsByIDStmt, err = db.PrepareContext(ctx, getCommandsByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCommandsByID: %w", err)
 	}
 	if q.getMatchingCommandsStmt, err = db.PrepareContext(ctx, getMatchingCommands); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMatchingCommands: %w", err)
@@ -94,6 +97,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteCommandStmt: %w", cerr)
 		}
 	}
+	if q.getApprovalsStmt != nil {
+		if cerr := q.getApprovalsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getApprovalsStmt: %w", cerr)
+		}
+	}
 	if q.getChannelStmt != nil {
 		if cerr := q.getChannelStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getChannelStmt: %w", cerr)
@@ -114,9 +122,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getCommandsStmt: %w", cerr)
 		}
 	}
-	if q.getGlobalCommandsStmt != nil {
-		if cerr := q.getGlobalCommandsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getGlobalCommandsStmt: %w", cerr)
+	if q.getCommandsByIDStmt != nil {
+		if cerr := q.getCommandsByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCommandsByIDStmt: %w", cerr)
 		}
 	}
 	if q.getMatchingCommandsStmt != nil {
@@ -192,11 +200,12 @@ type Queries struct {
 	createChannelStmt       *sql.Stmt
 	deleteChannelStmt       *sql.Stmt
 	deleteCommandStmt       *sql.Stmt
+	getApprovalsStmt        *sql.Stmt
 	getChannelStmt          *sql.Stmt
 	getChannelsStmt         *sql.Stmt
 	getCommandStmt          *sql.Stmt
 	getCommandsStmt         *sql.Stmt
-	getGlobalCommandsStmt   *sql.Stmt
+	getCommandsByIDStmt     *sql.Stmt
 	getMatchingCommandsStmt *sql.Stmt
 	isApprovedStmt          *sql.Stmt
 	setCommandStmt          *sql.Stmt
@@ -213,11 +222,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createChannelStmt:       q.createChannelStmt,
 		deleteChannelStmt:       q.deleteChannelStmt,
 		deleteCommandStmt:       q.deleteCommandStmt,
+		getApprovalsStmt:        q.getApprovalsStmt,
 		getChannelStmt:          q.getChannelStmt,
 		getChannelsStmt:         q.getChannelsStmt,
 		getCommandStmt:          q.getCommandStmt,
 		getCommandsStmt:         q.getCommandsStmt,
-		getGlobalCommandsStmt:   q.getGlobalCommandsStmt,
+		getCommandsByIDStmt:     q.getCommandsByIDStmt,
 		getMatchingCommandsStmt: q.getMatchingCommandsStmt,
 		isApprovedStmt:          q.isApprovedStmt,
 		setCommandStmt:          q.setCommandStmt,

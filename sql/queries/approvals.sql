@@ -7,6 +7,15 @@ WHERE
   channel_id = $1
   AND user_id = $2;
 
+-- name: GetApprovals :many
+SELECT
+  *
+FROM
+  approvals
+WHERE
+  channel_id = $1
+ORDER BY user_id DESC;
+
 -- name: Approve :exec
 INSERT INTO
   approvals (channel_id, user_id)
