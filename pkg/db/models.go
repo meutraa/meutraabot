@@ -11,6 +11,7 @@ import (
 
 type Approval struct {
 	ChannelID string
+	Manual    bool
 	UserID    string
 }
 

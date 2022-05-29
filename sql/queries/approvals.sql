@@ -14,13 +14,14 @@ FROM
   approvals
 WHERE
   channel_id = $1
+  AND manual = true
 ORDER BY user_id DESC;
 
 -- name: Approve :exec
 INSERT INTO
-  approvals (channel_id, user_id)
+  approvals (channel_id, user_id, manual)
 VALUES
-  ($1, $2) ON CONFLICT DO NOTHING;
+  ($1, $2, $3) ON CONFLICT DO NOTHING;
 
 -- name: Unapprove :exec
 DELETE FROM

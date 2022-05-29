@@ -15,6 +15,7 @@ ADD
 
 CREATE TABLE approvals (
   channel_id text NOT NULL,
+  manual boolean NOT NULL,
   user_id text NOT NULL
 );
 

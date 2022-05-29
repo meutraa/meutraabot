@@ -223,6 +223,7 @@ func (s *Server) checkUser(bots *BotsResponse, channel, username string) {
 	if err := s.q.Approve(ctx, db.ApproveParams{
 		ChannelID: channelID,
 		UserID:    userID,
+		Manual:    false,
 	}); nil != err {
 		log(channel, username, "unable to approve", err)
 		return

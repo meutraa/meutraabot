@@ -137,7 +137,9 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 	switch {
 	case command == "+approve" && isAdmin && argCount == 1:
 		if err := s.q.Approve(ctx, db.ApproveParams{
-			ChannelID: e.RoomID, UserID: selectedUserID,
+			ChannelID: e.RoomID,
+			UserID:    selectedUserID,
+			Manual:    true,
 		}); nil != err {
 			log(data.Channel, data.User, "unable to approve", err)
 			return "failed to approve user"

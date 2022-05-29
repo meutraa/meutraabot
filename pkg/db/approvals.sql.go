@@ -11,28 +11,30 @@ import (
 
 const approve = `-- name: Approve :exec
 INSERT INTO
-  approvals (channel_id, user_id)
+  approvals (channel_id, user_id, manual)
 VALUES
-  ($1, $2) ON CONFLICT DO NOTHING
+  ($1, $2, $3) ON CONFLICT DO NOTHING
 `
 
 type ApproveParams struct {
 	ChannelID string
 	UserID    string
+	Manual    bool
 }
 
 func (q *Queries) Approve(ctx context.Context, arg ApproveParams) error {
-	_, err := q.exec(ctx, q.approveStmt, approve, arg.ChannelID, arg.UserID)
+	_, err := q.exec(ctx, q.approveStmt, approve, arg.ChannelID, arg.UserID, arg.Manual)
 	return err
 }
 
 const getApprovals = `-- name: GetApprovals :many
 SELECT
-  channel_id, user_id
+  channel_id, manual, user_id
 FROM
   approvals
 WHERE
   channel_id = $1
+  AND manual = true
 ORDER BY user_id DESC
 `
 
@@ -45,7 +47,7 @@ func (q *Queries) GetApprovals(ctx context.Context, channelID string) ([]Approva
 	var items []Approval
 	for rows.Next() {
 		var i Approval
-		if err := rows.Scan(&i.ChannelID, &i.UserID); err != nil {
+		if err := rows.Scan(&i.ChannelID, &i.Manual, &i.UserID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
