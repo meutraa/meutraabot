@@ -8,9 +8,9 @@ import (
 	"time"
 
 	irc "github.com/gempir/go-twitch-irc/v3"
+	"github.com/meutraa/meutraabot/pkg/db"
 	"github.com/nicklaw5/helix/v2"
 	"github.com/pkg/errors"
-	"gitlab.com/meutraa/meutraabot/pkg/db"
 )
 
 type Server struct {

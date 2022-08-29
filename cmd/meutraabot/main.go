@@ -16,7 +16,7 @@ import (
 
 	irc "github.com/gempir/go-twitch-irc/v3"
 	_ "github.com/lib/pq"
-	"gitlab.com/meutraa/meutraabot/pkg/db"
+	"github.com/meutraa/meutraabot/pkg/db"
 )
 
 type Message struct {

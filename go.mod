@@ -1,4 +1,4 @@
-module gitlab.com/meutraa/meutraabot
+module github.com/meutraa/meutraabot
 
 go 1.18
 
