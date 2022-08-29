@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"time"
@@ -51,7 +52,7 @@ func (s *Server) PrepareAPI() {
 	})
 
 	go func() {
-		err := http.ListenAndServe(":8080", r)
+		err := http.ListenAndServe(":"+os.Getenv("PORT"), r)
 		if nil != err {
 			panic(err)
 		}
