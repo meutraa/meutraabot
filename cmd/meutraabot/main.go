@@ -336,15 +336,12 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		}
 	}
 
+	// log(data.Channel, data.User, "Matched templates len "+fmt.Sprint(len(templates)), nil)
 	if len(templates) == 0 {
 		// get the channel settings
 		settings, err := s.q.GetChannel(ctx, data.ChannelID)
 		if err != nil {
 			log(data.Channel, data.User, "unable to get channel settings", err)
-			return ""
-		}
-
-		if !settings.AutoreplyEnabled {
 			return ""
 		}
 
@@ -355,14 +352,24 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		}
 
 		// if meuua is involved in this message chain
+		// log(data.Channel, data.User, "replying to message ID "+data.ReplyingToMessageID, nil)
+		// log(data.Channel, data.User, "reply "+data.ReplyingToMessage, nil)
+		// log(data.Channel, data.User, "replyID "+data.ReplyingToMessageID, nil)
+
 		if data.ReplyingToMessageID != "" {
 			for _, m := range history {
 				if m.Reply != nil && m.Reply.ParentMsgID == data.ReplyingToMessageID {
+					// log(data.Channel, data.User, "found reply struct", nil)
+					// log(data.Channel, data.User, "reply user "+m.User.Name, nil)
 					if m.User.ID == s.env.twitchUserID {
 						return "reply::delay::" + s.funcReplyAuto(ctx, data, data.Message, false, func() string { return "" })
 					}
 				}
 			}
+		}
+
+		if !settings.AutoreplyEnabled {
+			return ""
 		}
 
 		// find how many messages it has been since meuua last said something
