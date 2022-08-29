@@ -92,6 +92,7 @@ func (s *Server) PrepareTwitchClient() error {
 }
 
 func (s *Server) OnChannels(ctx context.Context, onChannel func(broadcaster helix.User)) error {
+	time.Sleep(5 * time.Second)
 	channels, err := s.q.GetChannels(ctx)
 	if nil != err && err != sql.ErrNoRows {
 		return errors.Wrap(err, "unable to get channels")
