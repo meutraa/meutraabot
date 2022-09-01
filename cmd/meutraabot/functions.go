@@ -261,11 +261,7 @@ func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useC
 		return ""
 	}
 
-	if settings.OpenaiToken.Valid {
-		req.Header.Set("Authorization", "Bearer "+settings.OpenaiToken.String)
-	} else {
-		req.Header.Set("Authorization", "Bearer "+s.env.openaiKey)
-	}
+	req.Header.Set("Authorization", "Bearer "+settings.OpenaiToken.String)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -292,7 +288,6 @@ func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useC
 	}
 
 	str := completion.Choices[0].Text
-	// log(d.Channel, d.User, str, nil)
 
 	// remove the last line of the string
 	lines := strings.Split(strings.TrimSpace(str), "\n")

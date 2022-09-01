@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	_ "github.com/lib/pq"
+
 	irc "github.com/gempir/go-twitch-irc/v3"
 	"github.com/meutraa/meutraabot/pkg/db"
 	"github.com/nicklaw5/helix/v2"
@@ -29,7 +31,7 @@ type Environment struct {
 	twitchOauthToken         string
 	twitchClientSecret       string
 	twitchClientID           string
-	openaiKey                string
+	port                     string
 	postgresConnectionString string
 }
 
@@ -49,12 +51,13 @@ func (s *Server) PrepareDatabase() error {
 	}
 	s.conn = conn
 
-	if s.conn.Ping() != nil {
+	if err := s.conn.Ping(); err != nil {
 		return errors.Wrap(err, "unable to ping database")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*5))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*10))
 	defer cancel()
+
 	queries, err := db.Prepare(ctx, conn)
 	if nil != err {
 		return errors.Wrap(err, "unable to prepare queries")
@@ -238,7 +241,7 @@ func (s *Server) ReadEnvironmentVariables() error {
 	s.env.twitchClientID = os.Getenv("TWITCH_CLIENT_ID")
 	s.env.twitchClientSecret = os.Getenv("TWITCH_CLIENT_SECRET")
 	s.env.postgresConnectionString = os.Getenv("POSTGRES_CONNECTION_STRING")
-	s.env.openaiKey = os.Getenv("OPENAI_KEY")
+	s.env.port = os.Getenv("PORT")
 	s.env.twitchUserID = os.Getenv("TWITCH_USER_ID")
 	s.env.twitchOwnerID = os.Getenv("TWITCH_OWNER_ID")
 
@@ -248,7 +251,7 @@ func (s *Server) ReadEnvironmentVariables() error {
 		s.env.twitchClientSecret == "" ||
 		s.env.twitchClientID == "" ||
 		s.env.twitchOauthToken == "" ||
-		s.env.openaiKey == "" {
+		s.env.port == "" {
 		return errors.New("missing environment variable")
 	}
 	return nil
