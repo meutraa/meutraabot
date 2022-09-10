@@ -51,7 +51,17 @@ func (s *Server) Close() {
 var ddl string
 
 func (s *Server) PrepareDatabase() error {
-	conn, err := sql.Open("sqlite3", "file:db.sql?mode=rwc")
+	regex := func(re, s string) (bool, error) {
+		return regexp.MatchString(re, s)
+	}
+	sql.Register("sqlite3_extended",
+		&sqlite3.SQLiteDriver{
+			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+				return conn.RegisterFunc("regexp", regex, true)
+			},
+		})
+
+	conn, err := sql.Open("sqlite3_extended", "file:db.sql?mode=rwc")
 	if nil != err {
 		return errors.Wrap(err, "unable to establish connection to database")
 	}
@@ -68,16 +78,6 @@ func (s *Server) PrepareDatabase() error {
 	if _, err := conn.ExecContext(ctx, ddl); err != nil {
 		return errors.Wrap(err, "unable to create tables")
 	}
-
-	regex := func(re, s string) (bool, error) {
-		return regexp.MatchString(re, s)
-	}
-	sql.Register("sqlite3_extended",
-		&sqlite3.SQLiteDriver{
-			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-				return conn.RegisterFunc("regexp", regex, true)
-			},
-		})
 
 	queries, err := db.Prepare(ctx, conn)
 	if nil != err {

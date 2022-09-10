@@ -310,7 +310,6 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		message := strings.ToLower(text)
 		commands, err := s.q.GetMatchingCommands(ctx,
 			e.RoomID,
-			"0",
 			message,
 		)
 		if nil != err && err != sql.ErrNoRows {

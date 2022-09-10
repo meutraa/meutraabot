@@ -11,11 +11,11 @@ SELECT
     channel_id
   FROM commands
   WHERE (
-    channel_id = @ChannelID
+    channel_id = ?
     OR
-    channel_id = @ChannelGlobalID
+    channel_id = '0'
   )
-  AND regexp(name, @Message);
+  AND regexp(name, ?);
 
 -- name: GetCommands :many
 SELECT name
