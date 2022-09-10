@@ -11,8 +11,8 @@ import (
 )
 
 const createChannel = `-- name: CreateChannel :exec
-INSERT INTO channels (channel_id, created_at)
-  VALUES (?, now())
+INSERT INTO channels (channel_id)
+  VALUES (?)
   ON CONFLICT DO NOTHING
 `
 
@@ -32,7 +32,7 @@ func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
 }
 
 const getChannel = `-- name: GetChannel :one
-SELECT channel_id, autoreply_enabled, autoreply_frequency, reply_safety, openai_token, created_at, updated_at FROM channels WHERE channel_id = ? ORDER BY created_at DESC
+SELECT channel_id, autoreply_enabled, autoreply_frequency, reply_safety, openai_token FROM channels WHERE channel_id = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, error) {
@@ -44,8 +44,6 @@ func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, er
 		&i.AutoreplyFrequency,
 		&i.ReplySafety,
 		&i.OpenaiToken,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -81,8 +79,7 @@ const updateChannel = `-- name: UpdateChannel :exec
 UPDATE channels
  SET autoreply_enabled = ?,
   autoreply_frequency = ?,
-  reply_safety = ?,
-  updated_at = now()
+  reply_safety = ?
  WHERE channel_id = ?
 `
 
@@ -105,8 +102,7 @@ func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) er
 
 const updateChannelToken = `-- name: UpdateChannelToken :exec
 UPDATE channels
- SET openai_token = ?,
-  updated_at = now()
+ SET openai_token = ?
  WHERE channel_id = ?
 `
 

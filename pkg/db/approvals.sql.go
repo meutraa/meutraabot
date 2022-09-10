@@ -29,7 +29,7 @@ func (q *Queries) Approve(ctx context.Context, arg ApproveParams) error {
 
 const getApprovals = `-- name: GetApprovals :many
 SELECT
-  channel_id, manual, user_id
+  channel_id, user_id, manual
 FROM
   approvals
 WHERE
@@ -47,7 +47,7 @@ func (q *Queries) GetApprovals(ctx context.Context, channelID string) ([]Approva
 	var items []Approval
 	for rows.Next() {
 		var i Approval
-		if err := rows.Scan(&i.ChannelID, &i.Manual, &i.UserID); err != nil {
+		if err := rows.Scan(&i.ChannelID, &i.UserID, &i.Manual); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

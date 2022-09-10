@@ -6,13 +6,12 @@ package db
 
 import (
 	"database/sql"
-	"time"
 )
 
 type Approval struct {
 	ChannelID string
-	Manual    bool
 	UserID    string
+	Manual    bool
 }
 
 type Channel struct {
@@ -21,8 +20,6 @@ type Channel struct {
 	AutoreplyFrequency float64
 	ReplySafety        int64
 	OpenaiToken        sql.NullString
-	CreatedAt          time.Time
-	UpdatedAt          sql.NullTime
 }
 
 type Command struct {
