@@ -130,7 +130,7 @@ type GetMatchingCommandsRow struct {
 }
 
 func (q *Queries) GetMatchingCommands(ctx context.Context, regexp ...interface{}) ([]GetMatchingCommandsRow, error) {
-	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, regexp)
+	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, regexp...)
 	if err != nil {
 		return nil, err
 	}
