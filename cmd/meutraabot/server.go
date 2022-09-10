@@ -35,7 +35,6 @@ type Environment struct {
 	twitchOauthToken   string
 	twitchClientSecret string
 	twitchClientID     string
-	port               string
 }
 
 func (s *Server) Close() {
@@ -260,7 +259,6 @@ func (s *Server) ReadEnvironmentVariables() error {
 	s.env.twitchOauthToken = os.Getenv("TWITCH_OAUTH_TOKEN")
 	s.env.twitchClientID = os.Getenv("TWITCH_CLIENT_ID")
 	s.env.twitchClientSecret = os.Getenv("TWITCH_CLIENT_SECRET")
-	s.env.port = os.Getenv("PORT")
 	s.env.twitchUserID = os.Getenv("TWITCH_USER_ID")
 	s.env.twitchOwnerID = os.Getenv("TWITCH_OWNER_ID")
 
@@ -268,8 +266,7 @@ func (s *Server) ReadEnvironmentVariables() error {
 		s.env.twitchOwnerID == "" ||
 		s.env.twitchClientSecret == "" ||
 		s.env.twitchClientID == "" ||
-		s.env.twitchOauthToken == "" ||
-		s.env.port == "" {
+		s.env.twitchOauthToken == "" {
 		return errors.New("missing environment variable")
 	}
 	return nil
