@@ -1,14 +1,17 @@
 package main
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/go-chi/hostrouter"
+	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -26,7 +29,8 @@ func (s *Server) PrepareAPI() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 
-	r.Use(cors.Handler(cors.Options{
+	ar := chi.NewRouter()
+	ar.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"https://meuua.com"},
 		// AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
@@ -35,7 +39,7 @@ func (s *Server) PrepareAPI() {
 		MaxAge:           3600,
 	}))
 
-	r.Route("/channels", func(r chi.Router) {
+	ar.Route("/channels", func(r chi.Router) {
 		r.Get("/", s.listChannels())
 		r.Route("/{id}", func(r chi.Router) {
 			r.Put("/", s.registerChannel())
@@ -47,12 +51,48 @@ func (s *Server) PrepareAPI() {
 		})
 	})
 
-	r.Route("/commands", func(r chi.Router) {
+	ar.Route("/commands", func(r chi.Router) {
 		r.Get("/", s.listLocalCommands("0"))
 	})
 
+	or := chi.NewRouter()
+	or.Get("/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		// Get the "access_token" from the url fragment using javascript. Display the token large in the center of the page.
+		w.Write([]byte(`<html>
+				<head>
+						<script>
+								var url = window.location.href;
+								var access_token = url.split("#")[1].split("&")[0].split("=")[1];
+								document.write("<h1 style='text-align:center; font-size: 96px;'>" + access_token + "</h1>");
+						</script>
+				</head>
+		</html>`))
+	})
+
+	hr := hostrouter.New()
+	hr.Map("api.meuua.com", ar)
+	hr.Map("oauth.meuua.com", or)
+
+	certManager := autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		HostPolicy: autocert.HostWhitelist("api.meuua.com", "oauth.meuua.com"),
+		Cache:      autocert.DirCache("certs"),
+	}
+
+	r.Mount("/", hr)
+
+	server := &http.Server{
+		Addr:    ":https",
+		Handler: r,
+		TLSConfig: &tls.Config{
+			GetCertificate: certManager.GetCertificate,
+		},
+	}
+
 	go func() {
-		err := http.ListenAndServe(":"+os.Getenv("PORT"), r)
+		go http.ListenAndServe(":http", certManager.HTTPHandler(nil))
+		err := server.ListenAndServeTLS("", "")
 		if nil != err {
 			panic(err)
 		}

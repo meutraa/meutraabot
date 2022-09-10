@@ -11,8 +11,15 @@ require (
 )
 
 require (
+	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
+	golang.org/x/text v0.3.6 // indirect
+)
+
+require (
 	github.com/go-chi/chi/v5 v5.0.7
 	github.com/go-chi/cors v1.2.1
+	github.com/go-chi/hostrouter v0.2.0
 	github.com/golang-jwt/jwt/v4 v4.4.2 // indirect
 	github.com/mattn/go-sqlite3 v1.14.15
+	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
 )
