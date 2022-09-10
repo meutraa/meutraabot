@@ -12,7 +12,7 @@ import (
 
 const createChannel = `-- name: CreateChannel :exec
 INSERT INTO channels (channel_id, created_at)
-  VALUES ($1, NOW())
+  VALUES (?, now())
   ON CONFLICT DO NOTHING
 `
 
@@ -23,7 +23,7 @@ func (q *Queries) CreateChannel(ctx context.Context, channelID string) error {
 
 const deleteChannel = `-- name: DeleteChannel :exec
 DELETE FROM channels
-  WHERE channel_id = $1
+  WHERE channel_id = ?
 `
 
 func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
@@ -32,7 +32,7 @@ func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
 }
 
 const getChannel = `-- name: GetChannel :one
-SELECT channel_id, autoreply_enabled, autoreply_frequency, reply_safety, openai_token, created_at, updated_at FROM channels WHERE channel_id = $1 ORDER BY created_at DESC
+SELECT channel_id, autoreply_enabled, autoreply_frequency, reply_safety, openai_token, created_at, updated_at FROM channels WHERE channel_id = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, error) {
@@ -79,43 +79,43 @@ func (q *Queries) GetChannels(ctx context.Context) ([]string, error) {
 
 const updateChannel = `-- name: UpdateChannel :exec
 UPDATE channels
- SET autoreply_enabled = $2,
-  autoreply_frequency = $3,
-  reply_safety = $4,
+ SET autoreply_enabled = ?,
+  autoreply_frequency = ?,
+  reply_safety = ?,
   updated_at = now()
- WHERE channel_id = $1
+ WHERE channel_id = ?
 `
 
 type UpdateChannelParams struct {
-	ChannelID          string
 	AutoreplyEnabled   bool
 	AutoreplyFrequency float64
-	ReplySafety        int32
+	ReplySafety        int64
+	ChannelID          string
 }
 
 func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) error {
 	_, err := q.exec(ctx, q.updateChannelStmt, updateChannel,
-		arg.ChannelID,
 		arg.AutoreplyEnabled,
 		arg.AutoreplyFrequency,
 		arg.ReplySafety,
+		arg.ChannelID,
 	)
 	return err
 }
 
 const updateChannelToken = `-- name: UpdateChannelToken :exec
 UPDATE channels
- SET openai_token = $2,
+ SET openai_token = ?,
   updated_at = now()
- WHERE channel_id = $1
+ WHERE channel_id = ?
 `
 
 type UpdateChannelTokenParams struct {
-	ChannelID   string
 	OpenaiToken sql.NullString
+	ChannelID   string
 }
 
 func (q *Queries) UpdateChannelToken(ctx context.Context, arg UpdateChannelTokenParams) error {
-	_, err := q.exec(ctx, q.updateChannelTokenStmt, updateChannelToken, arg.ChannelID, arg.OpenaiToken)
+	_, err := q.exec(ctx, q.updateChannelTokenStmt, updateChannelToken, arg.OpenaiToken, arg.ChannelID)
 	return err
 }

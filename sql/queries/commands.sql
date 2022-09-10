@@ -1,8 +1,8 @@
 -- name: GetCommand :one
 SELECT template
   FROM commands
-  WHERE name = $2
-  AND channel_id = $1;
+  WHERE name = ?
+  AND channel_id = ?;
 
 -- name: GetMatchingCommands :many
 SELECT
@@ -11,32 +11,31 @@ SELECT
     channel_id
   FROM commands
   WHERE (
-    channel_id = sqlc.arg('ChannelID')
+    channel_id = @ChannelID
     OR
-    channel_id = sqlc.arg('ChannelGlobalID')
+    channel_id = @ChannelGlobalID
   )
-  AND (sqlc.arg('Message')::text ~ name)::bool;
+  AND @Message REGEXP name;
 
 -- name: GetCommands :many
 SELECT name
   FROM commands
-  WHERE channel_id = $1
+  WHERE channel_id = ?
   ORDER BY name ASC;
 
 -- name: GetCommandsByID :many
 SELECT name, template
   FROM commands
-  WHERE channel_id = $1
+  WHERE channel_id = ?
   ORDER BY name ASC;
 
 -- name: DeleteCommand :exec
 DELETE FROM commands
-  WHERE channel_id = $1
-  AND name = $2;
+  WHERE channel_id = ?
+  AND name = ?;
 
 -- name: SetCommand :exec
 INSERT INTO commands (channel_id, name, template)
-  VALUES ($1, $2, $3)
-  ON CONFLICT
-  ON CONSTRAINT command_pkey DO UPDATE
-  SET template = $3;
+  VALUES (?, ?, ?)
+  ON CONFLICT(channel_id, name) DO UPDATE
+  SET template = ?;

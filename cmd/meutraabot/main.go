@@ -308,11 +308,11 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		templates["test"] = strings.Join(args, " ")
 	default:
 		message := strings.ToLower(text)
-		commands, err := s.q.GetMatchingCommands(ctx, db.GetMatchingCommandsParams{
-			ChannelID:       e.RoomID,
-			ChannelGlobalID: "0",
-			Message:         message,
-		})
+		commands, err := s.q.GetMatchingCommands(ctx,
+			e.RoomID,
+			"0",
+			message,
+		)
 		if nil != err && err != sql.ErrNoRows {
 			log(data.Channel, data.User, "unable to get for "+message, err)
 			return ""

@@ -11,8 +11,8 @@ import (
 
 const deleteCommand = `-- name: DeleteCommand :exec
 DELETE FROM commands
-  WHERE channel_id = $1
-  AND name = $2
+  WHERE channel_id = ?
+  AND name = ?
 `
 
 type DeleteCommandParams struct {
@@ -28,17 +28,17 @@ func (q *Queries) DeleteCommand(ctx context.Context, arg DeleteCommandParams) er
 const getCommand = `-- name: GetCommand :one
 SELECT template
   FROM commands
-  WHERE name = $2
-  AND channel_id = $1
+  WHERE name = ?
+  AND channel_id = ?
 `
 
 type GetCommandParams struct {
-	ChannelID string
 	Name      string
+	ChannelID string
 }
 
 func (q *Queries) GetCommand(ctx context.Context, arg GetCommandParams) (string, error) {
-	row := q.queryRow(ctx, q.getCommandStmt, getCommand, arg.ChannelID, arg.Name)
+	row := q.queryRow(ctx, q.getCommandStmt, getCommand, arg.Name, arg.ChannelID)
 	var template string
 	err := row.Scan(&template)
 	return template, err
@@ -47,7 +47,7 @@ func (q *Queries) GetCommand(ctx context.Context, arg GetCommandParams) (string,
 const getCommands = `-- name: GetCommands :many
 SELECT name
   FROM commands
-  WHERE channel_id = $1
+  WHERE channel_id = ?
   ORDER BY name ASC
 `
 
@@ -77,7 +77,7 @@ func (q *Queries) GetCommands(ctx context.Context, channelID string) ([]string, 
 const getCommandsByID = `-- name: GetCommandsByID :many
 SELECT name, template
   FROM commands
-  WHERE channel_id = $1
+  WHERE channel_id = ?
   ORDER BY name ASC
 `
 
@@ -116,18 +116,12 @@ SELECT
     channel_id
   FROM commands
   WHERE (
-    channel_id = $1
+    channel_id = @ChannelID
     OR
-    channel_id = $2
+    channel_id = @ChannelGlobalID
   )
-  AND ($3::text ~ name)::bool
+  AND @Message REGEXP name
 `
-
-type GetMatchingCommandsParams struct {
-	ChannelID       string
-	ChannelGlobalID string
-	Message         string
-}
 
 type GetMatchingCommandsRow struct {
 	Template  string
@@ -135,8 +129,8 @@ type GetMatchingCommandsRow struct {
 	ChannelID string
 }
 
-func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingCommandsParams) ([]GetMatchingCommandsRow, error) {
-	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, arg.ChannelID, arg.ChannelGlobalID, arg.Message)
+func (q *Queries) GetMatchingCommands(ctx context.Context, dollar_1 ...interface{}) ([]GetMatchingCommandsRow, error) {
+	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, dollar_1)
 	if err != nil {
 		return nil, err
 	}
@@ -160,10 +154,9 @@ func (q *Queries) GetMatchingCommands(ctx context.Context, arg GetMatchingComman
 
 const setCommand = `-- name: SetCommand :exec
 INSERT INTO commands (channel_id, name, template)
-  VALUES ($1, $2, $3)
-  ON CONFLICT
-  ON CONSTRAINT command_pkey DO UPDATE
-  SET template = $3
+  VALUES (?, ?, ?)
+  ON CONFLICT(channel_id, name) DO UPDATE
+  SET template = ?
 `
 
 type SetCommandParams struct {

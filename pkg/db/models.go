@@ -19,7 +19,7 @@ type Channel struct {
 	ChannelID          string
 	AutoreplyEnabled   bool
 	AutoreplyFrequency float64
-	ReplySafety        int32
+	ReplySafety        int64
 	OpenaiToken        sql.NullString
 	CreatedAt          time.Time
 	UpdatedAt          sql.NullTime

@@ -4,8 +4,8 @@ SELECT
 FROM
   approvals
 WHERE
-  channel_id = $1
-  AND user_id = $2;
+  channel_id = ?
+  AND user_id = ?;
 
 -- name: GetApprovals :many
 SELECT
@@ -13,7 +13,7 @@ SELECT
 FROM
   approvals
 WHERE
-  channel_id = $1
+  channel_id = ?
   AND manual = true
 ORDER BY user_id DESC;
 
@@ -21,11 +21,11 @@ ORDER BY user_id DESC;
 INSERT INTO
   approvals (channel_id, user_id, manual)
 VALUES
-  ($1, $2, $3) ON CONFLICT DO NOTHING;
+  (?, ?, ?) ON CONFLICT DO NOTHING;
 
 -- name: Unapprove :exec
 DELETE FROM
   approvals
 WHERE
-  channel_id = $1
-  AND user_id = $2;
+  channel_id = ?
+  AND user_id = ?;
