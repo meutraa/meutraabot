@@ -198,7 +198,7 @@ func (s *Server) checkUser(bots *BotsResponse, channel, username string) {
 		}
 
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
 	// Get channel and user id

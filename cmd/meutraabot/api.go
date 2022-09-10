@@ -24,7 +24,7 @@ func (s *Server) PrepareAPI() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(10 * time.Second))
+	r.Use(middleware.Timeout(30 * time.Second))
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"https://meuua.com"},

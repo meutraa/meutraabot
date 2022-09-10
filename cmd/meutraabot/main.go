@@ -461,7 +461,7 @@ func (s *Server) handleMessage(e irc.PrivateMessage) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
 	res := s.handleCommand(ctx, &e)
