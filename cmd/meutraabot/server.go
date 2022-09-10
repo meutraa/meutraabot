@@ -116,7 +116,6 @@ func (s *Server) PrepareTwitchClient() error {
 }
 
 func (s *Server) OnChannels(ctx context.Context, onChannel func(broadcaster helix.User)) error {
-	time.Sleep(5 * time.Second)
 	channels, err := s.q.GetChannels(ctx)
 	if nil != err && err != sql.ErrNoRows {
 		return errors.Wrap(err, "unable to get channels")
@@ -168,7 +167,7 @@ func (s *Server) PrepareIRC() error {
 	s.irc.OnGlobalUserStateMessage(func(m irc.GlobalUserStateMessage) {
 		// Get own user id
 		s.irc.Join(self.Login)
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
 
 		if err := s.OnChannels(ctx, func(broadcaster helix.User) {
