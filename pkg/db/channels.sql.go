@@ -32,7 +32,7 @@ func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
 }
 
 const getChannel = `-- name: GetChannel :one
-SELECT channel_id, autoreply_enabled, autoreply_frequency, reply_safety, openai_token FROM channels WHERE channel_id = ? ORDER BY created_at DESC
+SELECT channel_id, autoreply_enabled, autoreply_frequency, reply_safety, openai_token FROM channels WHERE channel_id = ?
 `
 
 func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, error) {
