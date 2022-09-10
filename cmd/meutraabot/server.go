@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"regexp"
 	"time"
 
+	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
 
 	_ "embed"
@@ -66,6 +68,16 @@ func (s *Server) PrepareDatabase() error {
 	if _, err := conn.ExecContext(ctx, ddl); err != nil {
 		return errors.Wrap(err, "unable to create tables")
 	}
+
+	regex := func(re, s string) (bool, error) {
+		return regexp.MatchString(re, s)
+	}
+	sql.Register("sqlite3_extended",
+		&sqlite3.SQLiteDriver{
+			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+				return conn.RegisterFunc("regexp", regex, true)
+			},
+		})
 
 	queries, err := db.Prepare(ctx, conn)
 	if nil != err {

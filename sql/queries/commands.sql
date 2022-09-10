@@ -15,7 +15,7 @@ SELECT
     OR
     channel_id = @ChannelGlobalID
   )
-  AND @Message REGEXP name;
+  AND regexp(name, @Message);
 
 -- name: GetCommands :many
 SELECT name

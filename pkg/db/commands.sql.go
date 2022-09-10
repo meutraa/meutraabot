@@ -120,7 +120,7 @@ SELECT
     OR
     channel_id = @ChannelGlobalID
   )
-  AND @Message REGEXP name
+  AND regexp(name, @Message)
 `
 
 type GetMatchingCommandsRow struct {
@@ -129,8 +129,8 @@ type GetMatchingCommandsRow struct {
 	ChannelID string
 }
 
-func (q *Queries) GetMatchingCommands(ctx context.Context, dollar_1 ...interface{}) ([]GetMatchingCommandsRow, error) {
-	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, dollar_1)
+func (q *Queries) GetMatchingCommands(ctx context.Context, regexp ...interface{}) ([]GetMatchingCommandsRow, error) {
+	rows, err := q.query(ctx, q.getMatchingCommandsStmt, getMatchingCommands, regexp)
 	if err != nil {
 		return nil, err
 	}

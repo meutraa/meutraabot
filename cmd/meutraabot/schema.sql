@@ -8,14 +8,14 @@ CREATE TABLE channels (
 
 CREATE TABLE approvals (
   channel_id text NOT NULL,
-  manual boolean NOT NULL,
   user_id text NOT NULL,
-  PRIMARY KEY (channel_id, user_id)
+  manual boolean NOT NULL,
+  UNIQUE (channel_id, user_id)
 );
 
 CREATE TABLE commands (
   channel_id text NOT NULL,
   name text NOT NULL,
   template text NOT NULL,
-  PRIMARY KEY (channel_id, name)
+  UNIQUE (channel_id, name)
 );
