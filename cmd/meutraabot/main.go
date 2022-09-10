@@ -15,7 +15,6 @@ import (
 	"time"
 
 	irc "github.com/gempir/go-twitch-irc/v3"
-	_ "github.com/lib/pq"
 	"github.com/meutraa/meutraabot/pkg/db"
 )
 
