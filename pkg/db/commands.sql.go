@@ -166,6 +166,6 @@ type SetCommandParams struct {
 }
 
 func (q *Queries) SetCommand(ctx context.Context, arg SetCommandParams) error {
-	_, err := q.exec(ctx, q.setCommandStmt, setCommand, arg.ChannelID, arg.Name, arg.Template)
+	_, err := q.exec(ctx, q.setCommandStmt, setCommand, arg.ChannelID, arg.Name, arg.Template, arg.Template)
 	return err
 }
