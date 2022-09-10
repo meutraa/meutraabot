@@ -49,7 +49,7 @@ func (s *Server) Close() {
 var ddl string
 
 func (s *Server) PrepareDatabase() error {
-	conn, err := sql.Open("sqlite3", "db.sql")
+	conn, err := sql.Open("sqlite3", "file:db.sql?mode=rwc")
 	if nil != err {
 		return errors.Wrap(err, "unable to establish connection to database")
 	}
