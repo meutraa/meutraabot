@@ -48,6 +48,7 @@ func run() error {
 	s := Server{}
 
 	s.history = make(map[string][]*irc.PrivateMessage)
+	s.conversations = make(map[string][]*irc.PrivateMessage)
 
 	if err := s.ReadEnvironmentVariables(); nil != err {
 		return err
@@ -110,6 +111,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		ChannelID:      e.RoomID,
 		User:           e.User.Name,
 		UserID:         e.User.ID,
+		Event:          e,
 		IsMod:          isMod,
 		IsAdmin:        isAdmin,
 		IsOwner:        isOwner,
@@ -349,16 +351,9 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			return ""
 		}
 
-		// if meuua is involved in this message chain
-		// log(data.Channel, data.User, "replying to message ID "+data.ReplyingToMessageID, nil)
-		// log(data.Channel, data.User, "reply "+data.ReplyingToMessage, nil)
-		// log(data.Channel, data.User, "replyID "+data.ReplyingToMessageID, nil)
-
 		if data.ReplyingToMessageID != "" {
 			for _, m := range history {
 				if m.Reply != nil && m.Reply.ParentMsgID == data.ReplyingToMessageID {
-					// log(data.Channel, data.User, "found reply struct", nil)
-					// log(data.Channel, data.User, "reply user "+m.User.Name, nil)
 					if m.User.ID == s.env.twitchUserID {
 						return "reply::delay::" + s.funcReplyAuto(ctx, data, data.Message, false, func() string { return "" })
 					}
@@ -515,6 +510,7 @@ func (s *Server) handleMessage(e irc.PrivateMessage) {
 				}
 				s.history[e.Channel] = append(s.history[e.Channel], &add)
 				if reply {
+					s.conversations[e.Channel] = append(s.conversations[e.Channel], &add)
 					s.irc.Reply(e.Channel, e.ID, parts)
 				} else {
 					s.irc.Say(e.Channel, parts)

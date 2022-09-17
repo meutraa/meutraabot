@@ -21,25 +21,26 @@ import (
 )
 
 type Data struct {
-	User                string   `json:".User"`
-	UserID              string   `json:".UserID"`
-	Channel             string   `json:".Channel"`
-	ChannelID           string   `json:".ChannelID"`
-	Message             string   `json:".Message"`
-	MessageID           string   `json:".MessageID"`
-	IsMod               bool     `json:".IsMod"`
-	IsOwner             bool     `json:".IsOwner"`
-	IsAdmin             bool     `json:".IsAdmin"`
-	IsSub               bool     `json:".IsSub"`
-	BotID               string   `json:".BotID"`
-	Command             string   `json:".Command"`
-	Arg                 []string `json:".Arg"`
-	SelectedUser        string   `json:".SelectedUser"`
-	SelectedUserID      string   `json:".SelectedUserID"`
-	ReplyingToUser      string   `json:".ReplyingToUser"`
-	ReplyingToUserID    string   `json:".ReplyingToUserID"`
-	ReplyingToMessage   string   `json:".ReplyingToMessage"`
-	ReplyingToMessageID string   `json:".ReplyingToMessageID"`
+	User                string              `json:".User"`
+	UserID              string              `json:".UserID"`
+	Channel             string              `json:".Channel"`
+	ChannelID           string              `json:".ChannelID"`
+	Message             string              `json:".Message"`
+	MessageID           string              `json:".MessageID"`
+	IsMod               bool                `json:".IsMod"`
+	IsOwner             bool                `json:".IsOwner"`
+	IsAdmin             bool                `json:".IsAdmin"`
+	IsSub               bool                `json:".IsSub"`
+	BotID               string              `json:".BotID"`
+	Event               *irc.PrivateMessage `json:"-"`
+	Command             string              `json:".Command"`
+	Arg                 []string            `json:".Arg"`
+	SelectedUser        string              `json:".SelectedUser"`
+	SelectedUserID      string              `json:".SelectedUserID"`
+	ReplyingToUser      string              `json:".ReplyingToUser"`
+	ReplyingToUserID    string              `json:".ReplyingToUserID"`
+	ReplyingToMessage   string              `json:".ReplyingToMessage"`
+	ReplyingToMessageID string              `json:".ReplyingToMessageID"`
 }
 
 func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) template.FuncMap {
@@ -141,6 +142,11 @@ func (s *Server) funcReply(ctx context.Context, d Data, message string) string {
 }
 
 func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useCustomPrompt bool, prompt func() string) string {
+	if _, ok := s.conversations[d.Event.Channel]; !ok {
+		s.conversations[d.Event.Channel] = make([]*irc.PrivateMessage, 0)
+	}
+	s.conversations[d.Event.Channel] = append(s.conversations[d.Event.Channel], d.Event)
+
 	// get the channel settings
 	settings, err := s.q.GetChannel(ctx, d.ChannelID)
 	if err != nil {
@@ -181,8 +187,11 @@ func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useC
 	} else {
 		if d.ReplyingToMessage != "" {
 			// find all the messages in this thread
-			history, ok := s.history[d.Channel]
+			history, ok := s.conversations[d.Channel]
 			if ok {
+				if len(history) > 15 {
+					history = history[len(history)-15:]
+				}
 				messages := []string{}
 				for _, message := range history {
 					messageStr := message.Message
@@ -190,19 +199,7 @@ func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useC
 					if strings.HasPrefix(messageStr, "@"+message.User.Name+" ") {
 						messageStr = strings.Replace(messageStr, "@"+message.User.Name+" ", "", 1)
 					}
-					if message.ID == d.ReplyingToMessageID {
-						messages = append(messages, message.User.Name+": "+messageStr+"\n")
-					}
-					if message.Reply == nil {
-						continue
-					}
-					if message.Reply.ParentMsgID == d.ReplyingToMessageID {
-						messages = append(messages, message.User.Name+": "+messageStr+"\n")
-					}
-				}
-				// if messages is more than 5, only show the last 5
-				if len(messages) > 5 {
-					messages = messages[len(messages)-5:]
+					messages = append(messages, message.User.Name+": "+messageStr+"\n")
 				}
 				for _, message := range messages {
 					p += message
@@ -218,7 +215,7 @@ func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useC
 
 	data := CompletionRequest{
 		Prompt:           p,
-		MaxTokens:        64,
+		MaxTokens:        100,
 		FrequencyPenalty: 2.0,
 		PresencePenalty:  2.0,
 		Temperature:      1.0,
@@ -233,6 +230,7 @@ func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useC
 			"6726":  -100, // friend
 			"33757": -100, // avage
 			"562":   -100, // ass
+			"10705": -100, // ASS
 			"4107":  -100, // asy
 			"11720": -100, // assy
 			"4459":  -100, // " opinion"

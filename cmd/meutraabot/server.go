@@ -20,12 +20,13 @@ import (
 )
 
 type Server struct {
-	irc     *irc.Client
-	conn    *sql.DB
-	twitch  *helix.Client
-	q       *db.Queries
-	env     *Environment
-	history map[string][]*irc.PrivateMessage
+	irc           *irc.Client
+	conn          *sql.DB
+	twitch        *helix.Client
+	q             *db.Queries
+	env           *Environment
+	history       map[string][]*irc.PrivateMessage
+	conversations map[string][]*irc.PrivateMessage
 }
 
 type Environment struct {
