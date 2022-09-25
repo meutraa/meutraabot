@@ -47,6 +47,10 @@ func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) tem
 	return template.FuncMap{
 		"reply":      func(message string) string { return s.funcReply(ctx, d, message) },
 		"user":       func() string { return s.funcUser(ctx, d) },
+		"timeout":    func(duration int, reason string) string { return s.funcBan(ctx, d, duration, reason) },
+		"ban":        func(reason string) string { return s.funcBan(ctx, d, 0, reason) },
+		"delete":     func() string { return s.funcDelete(ctx, d, d.MessageID) },
+		"clear":      func() string { return s.funcDelete(ctx, d, "") },
 		"userfollow": func() string { return s.funcUserFollow(ctx, d) },
 		"stream":     func() string { return s.funcStream(ctx, d) },
 		"random":     func(max int) string { return s.funcRandom(ctx, d, max) },
@@ -131,6 +135,107 @@ func (s *Server) funcUser(ctx context.Context, d Data) string {
 		return ""
 	}
 	return string(data)
+}
+
+// https://dev.twitch.tv/docs/api/reference#delete-chat-messages
+func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) string {
+	req, err := http.NewRequest(http.MethodDelete, "https://api.twitch.tv/helix/moderation/chat", nil)
+	if err != nil {
+		log(d.Channel, d.User, "unable to create request", err)
+		return ""
+	}
+
+	req.Header.Add("Authorization", "Bearer "+strings.TrimPrefix(s.env.twitchOauthToken, "oauth:"))
+	req.Header.Add("Client-Id", s.env.twitchClientID)
+
+	q := req.URL.Query()
+	q.Add("broadcaster_id", d.ChannelID)
+	q.Add("moderator_id", s.env.twitchUserID)
+	if "" != messageID {
+		q.Add("message_id", messageID)
+	}
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		log(d.Channel, d.User, "unable to do request", err)
+		return ""
+	}
+
+	switch resp.StatusCode {
+	case 204: // Success
+	case 400: // Not allowed to delete mod/broadcaster messages
+	case 403: // Not a mod
+	case 404: // Message not found, or too old
+		return ""
+	case 401:
+		return "unauthorized, check token scope for moderator:manage:chat_messages, or client-id"
+	}
+	return ""
+}
+
+// https://dev.twitch.tv/docs/api/reference#ban-user
+func (s *Server) funcBan(ctx context.Context, d Data, duration int, reason string) string {
+	type Data struct {
+		Duration int    `json:"duration,omitempty"`
+		Reason   string `json:"reason"`
+		UserID   string `json:"user_id"`
+	}
+	type Request struct {
+		Data Data `json:"data"`
+	}
+
+	reqBody, err := json.Marshal(Request{
+		Data: Data{
+			Duration: duration,
+			Reason:   reason,
+			UserID:   d.UserID,
+		},
+	})
+	if err != nil {
+		log(d.Channel, d.User, "unable to marshal requestbody ", err)
+		return ""
+	}
+
+	req, err := http.NewRequest(
+		http.MethodPost,
+		"https://api.twitch.tv/helix/moderation/bans",
+		bytes.NewBuffer(reqBody),
+	)
+	if err != nil {
+		log(d.Channel, d.User, "unable to create request", err)
+		return ""
+	}
+
+	req.Header.Add("Authorization", "Bearer "+strings.TrimPrefix(s.env.twitchOauthToken, "oauth:"))
+	req.Header.Add("Client-Id", s.env.twitchClientID)
+	req.Header.Add("Content-Type", "application/json")
+
+	q := req.URL.Query()
+	q.Add("broadcaster_id", d.ChannelID)
+	q.Add("moderator_id", s.env.twitchUserID)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		log(d.Channel, d.User, "unable to do request", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case 400: // Bad request
+		return "bad request"
+	case 200: // Success
+	case 403:
+	case 409:
+		return ""
+	case 429:
+		return "rate limited"
+	case 401:
+		return "unauthorized, check token scope for moderator:manage:banned_users, or client-id"
+	}
+	return ""
 }
 
 func (s *Server) funcRandom(ctx context.Context, d Data, max int) string {

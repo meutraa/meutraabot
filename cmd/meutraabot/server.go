@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"os"
 	"regexp"
 	"time"
@@ -24,6 +25,7 @@ type Server struct {
 	conn          *sql.DB
 	twitch        *helix.Client
 	q             *db.Queries
+	client        *http.Client
 	env           *Environment
 	history       map[string][]*irc.PrivateMessage
 	conversations map[string][]*irc.PrivateMessage
@@ -103,6 +105,7 @@ func (s *Server) PrepareTwitchClient() error {
 	}
 
 	client.SetAppAccessToken(resp.Data.AccessToken)
+	s.client = &http.Client{}
 	s.twitch = client
 
 	bot, err := User(s.twitch, s.env.twitchUserID)
