@@ -100,7 +100,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 	}
 	selectedUserID := e.User.ID
 	if isUser {
-		sUser, err := UserByName(s.twitch, selectedUser)
+		sUser, err := User(s.twitch, "", selectedUser)
 		if nil == err {
 			selectedUserID = sUser.ID
 		}
@@ -146,7 +146,12 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			return "failed to approve user"
 		}
 
-		return "/unban " + selectedUser + "\n" + selectedUser + " approved"
+		// A little hack
+		data.User = data.SelectedUser
+		data.UserID = data.SelectedUserID
+
+		s.funcUnban(ctx, data)
+		return ""
 	case command == "+unapprove" && isAdmin && argCount == 1:
 		if err := s.q.Unapprove(ctx, db.UnapproveParams{
 			ChannelID: e.RoomID, UserID: selectedUserID,
@@ -155,7 +160,12 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			return "failed to approve user"
 		}
 
-		return "/ban " + selectedUser + "\n" + selectedUser + " unapproved"
+		// A little hack
+		data.User = data.SelectedUser
+		data.UserID = data.SelectedUserID
+
+		s.funcBan(ctx, data, 0, "bot unapproved")
+		return ""
 	case command == "+leave":
 		if err := s.q.DeleteChannel(ctx, e.User.ID); nil != err {
 			return "failed to leave channel"
@@ -177,8 +187,8 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 				log(data.Channel, data.User, "unable to add channel", err)
 				return "unable to join channel"
 			}
-			s.JoinChannel(args[0])
-			msg := "Hi " + args[0] + " 👋"
+			s.JoinChannels([]string{selectedUser}, []string{selectedUserID})
+			msg := "Hi " + selectedUser + " 👋"
 			func() {
 				time.Sleep(time.Second * 2)
 				s.irc.Say(selectedUser, msg)
@@ -191,7 +201,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 			return "unable to join channel"
 		}
 
-		s.JoinChannel(e.User.Name)
+		s.JoinChannels([]string{e.User.Name}, []string{e.User.ID})
 		msg := "Hi " + e.User.Name + " 👋"
 		func() {
 			time.Sleep(time.Second * 2)

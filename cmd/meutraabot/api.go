@@ -150,7 +150,7 @@ func (s *Server) registerChannel() http.HandlerFunc {
 			return
 		}
 
-		s.JoinChannel(user.Login)
+		s.JoinChannels([]string{user.Login}, []string{user.ID})
 		msg := "Hi " + user.DisplayName + " 👋"
 		go func() {
 			time.Sleep(time.Second * 2)
@@ -249,12 +249,12 @@ func (s *Server) listApprovals() http.HandlerFunc {
 			return
 		}
 
-		channels := []string{}
+		channelIDs := []string{}
 		for _, a := range approvals {
-			channels = append(channels, a.UserID)
+			channelIDs = append(channelIDs, a.UserID)
 		}
 
-		resp, err := Users(s.twitch, channels)
+		resp, err := Users(s.twitch, channelIDs, []string{})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -421,7 +421,7 @@ func (s *Server) listChannels() http.HandlerFunc {
 			return
 		}
 
-		resp, err := Users(s.twitch, channels)
+		resp, err := Users(s.twitch, channels, []string{})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

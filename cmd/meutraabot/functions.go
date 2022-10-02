@@ -18,6 +18,7 @@ import (
 	irc "github.com/gempir/go-twitch-irc/v3"
 	"github.com/hako/durafmt"
 	"github.com/nicklaw5/helix/v2"
+	"github.com/samber/lo"
 )
 
 type Data struct {
@@ -60,23 +61,15 @@ func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) tem
 	}
 }
 
-func UserByName(client *helix.Client, username string) (helix.User, error) {
-	resp, err := client.GetUsers(&helix.UsersParams{
-		Logins: []string{username},
-	})
-	if err != nil {
-		fmt.Println("unable to get user by id", err)
-		return helix.User{}, err
+func User(client *helix.Client, userID, username string) (helix.User, error) {
+	ids := []string{}
+	usernames := []string{}
+	if userID != "" {
+		ids = append(ids, userID)
+	} else if username != "" {
+		usernames = append(usernames, username)
 	}
-	if len(resp.Data.Users) == 0 {
-		return helix.User{}, errors.New("unable to find user")
-	}
-
-	return resp.Data.Users[0], nil
-}
-
-func User(client *helix.Client, userID string) (helix.User, error) {
-	res, err := Users(client, []string{userID})
+	res, err := Users(client, ids, usernames)
 	if err != nil {
 		return helix.User{}, err
 	}
@@ -86,10 +79,17 @@ func User(client *helix.Client, userID string) (helix.User, error) {
 	return res[0], nil
 }
 
-func Users(client *helix.Client, userIDs []string) ([]helix.User, error) {
-	resp, err := client.GetUsers(&helix.UsersParams{
-		IDs: userIDs,
-	})
+func Users(client *helix.Client, userIDs []string, usernames []string) ([]helix.User, error) {
+	req := helix.UsersParams{}
+	if len(userIDs) > 0 {
+		req.IDs = userIDs
+	} else if len(usernames) > 0 {
+		req.Logins = usernames
+	} else {
+		return []helix.User{}, nil
+	}
+
+	resp, err := client.GetUsers(&req)
 	if err != nil {
 		fmt.Println("unable to get users by id", err)
 		return []helix.User{}, err
@@ -123,7 +123,7 @@ func (s *Server) funcUserFollow(ctx context.Context, d Data) string {
 }
 
 func (s *Server) funcUser(ctx context.Context, d Data) string {
-	user, err := User(s.twitch, d.SelectedUserID)
+	user, err := User(s.twitch, d.SelectedUserID, "")
 	if err != nil {
 		log(d.Channel, d.User, "unable to get user "+d.SelectedUser, err)
 		return ""
@@ -137,6 +137,58 @@ func (s *Server) funcUser(ctx context.Context, d Data) string {
 	return string(data)
 }
 
+// https://dev.twitch.tv/docs/api/reference#get-chatters
+func (s *Server) Chatters(ctx context.Context, channelID string) ([]string, error) {
+	req, err := http.NewRequest(
+		http.MethodGet,
+		"https://api.twitch.tv/helix/chat/chatters",
+		nil,
+	)
+	if err != nil {
+		return []string{}, err
+	}
+
+	req.Header.Add("Authorization", "Bearer "+s.env.helixToken)
+	req.Header.Add("Client-Id", s.env.twitchClientID)
+	req.Header.Add("Content-Type", "application/json")
+
+	q := req.URL.Query()
+	q.Add("broadcaster_id", channelID)
+	q.Add("moderator_id", s.env.twitchUserID)
+	// This only returns the first 100 (max 1000)
+	q.Add("first", "100")
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return []string{}, err
+	}
+	defer resp.Body.Close()
+
+	type UserData struct {
+		Login string `json:"user_login"`
+	}
+	type Data struct {
+		Logins []UserData `json:"data"`
+	}
+
+	switch resp.StatusCode {
+	case 400: // Bad request
+		return []string{}, errors.New("bad request")
+	case 401: // Unauthorized, might not be mod
+	case 403:
+		return []string{}, errors.New("unauthorized or forbidden")
+	}
+
+	data := Data{}
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	if nil != err {
+		return []string{}, err
+	}
+
+	return lo.Map(data.Logins, func(data UserData, _ int) string { return data.Login }), nil
+}
+
 // https://dev.twitch.tv/docs/api/reference#delete-chat-messages
 func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) string {
 	req, err := http.NewRequest(http.MethodDelete, "https://api.twitch.tv/helix/moderation/chat", nil)
@@ -145,7 +197,7 @@ func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) strin
 		return ""
 	}
 
-	req.Header.Add("Authorization", "Bearer "+strings.TrimPrefix(s.env.twitchOauthToken, "oauth:"))
+	req.Header.Add("Authorization", "Bearer "+s.env.helixToken)
 	req.Header.Add("Client-Id", s.env.twitchClientID)
 
 	q := req.URL.Query()
@@ -170,6 +222,49 @@ func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) strin
 		return ""
 	case 401:
 		return "unauthorized, check token scope for moderator:manage:chat_messages, or client-id"
+	}
+	return ""
+}
+
+// https://dev.twitch.tv/docs/api/reference#unban-user
+func (s *Server) funcUnban(ctx context.Context, d Data) string {
+	req, err := http.NewRequest(
+		http.MethodDelete,
+		"https://api.twitch.tv/helix/moderation/bans",
+		nil,
+	)
+	if err != nil {
+		log(d.Channel, d.User, "unable to create request", err)
+		return ""
+	}
+
+	req.Header.Add("Authorization", "Bearer "+s.env.helixToken)
+	req.Header.Add("Client-Id", s.env.twitchClientID)
+	req.Header.Add("Content-Type", "application/json")
+
+	q := req.URL.Query()
+	q.Add("broadcaster_id", d.ChannelID)
+	q.Add("moderator_id", s.env.twitchUserID)
+	q.Add("user_id", d.UserID)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		log(d.Channel, d.User, "unable to do request", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case 400: // Bad request
+		return "bad request"
+	case 200: // Success
+	case 401: // Unauthorized, might not be mod
+	case 403:
+	case 409:
+		return ""
+	case 429:
+		return "rate limited"
 	}
 	return ""
 }
@@ -207,7 +302,7 @@ func (s *Server) funcBan(ctx context.Context, d Data, duration int, reason strin
 		return ""
 	}
 
-	req.Header.Add("Authorization", "Bearer "+strings.TrimPrefix(s.env.twitchOauthToken, "oauth:"))
+	req.Header.Add("Authorization", "Bearer "+s.env.helixToken)
 	req.Header.Add("Client-Id", s.env.twitchClientID)
 	req.Header.Add("Content-Type", "application/json")
 
@@ -227,13 +322,12 @@ func (s *Server) funcBan(ctx context.Context, d Data, duration int, reason strin
 	case 400: // Bad request
 		return "bad request"
 	case 200: // Success
+	case 401: // Unauthorized, might not be mod
 	case 403:
 	case 409:
 		return ""
 	case 429:
 		return "rate limited"
-	case 401:
-		return "unauthorized, check token scope for moderator:manage:banned_users, or client-id"
 	}
 	return ""
 }
@@ -439,28 +533,6 @@ func (s *Server) funcDuration(ctx context.Context, d Data, startTime string) str
 	}
 
 	return durafmt.Parse(time.Since(t)).LimitFirstN(3).String()
-}
-
-type BotsResponse struct {
-	Bots  [][]interface{} `json:"bots"`
-	Total int             `json:"_total"`
-}
-
-func getBotList() (*BotsResponse, error) {
-	resp, err := http.Get("https://api.twitchinsights.net/v1/bots/all")
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if nil != err {
-		return nil, err
-	}
-	bots := BotsResponse{}
-	if err := json.Unmarshal(body, &bots); nil != err {
-		return nil, err
-	}
-	return &bots, err
 }
 
 func (s *Server) funcGet(ctx context.Context, d Data, url string) string {

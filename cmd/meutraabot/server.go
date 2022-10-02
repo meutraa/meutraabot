@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	l "log"
 	"net/http"
 	"os"
 	"regexp"
 	"time"
+
+	"github.com/samber/lo"
 
 	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
@@ -35,7 +38,8 @@ type Environment struct {
 	twitchUserName     string
 	twitchUserID       string
 	twitchOwnerID      string
-	twitchOauthToken   string
+	helixToken         string
+	ircToken           string
 	twitchClientSecret string
 	twitchClientID     string
 }
@@ -108,7 +112,7 @@ func (s *Server) PrepareTwitchClient() error {
 	s.client = &http.Client{}
 	s.twitch = client
 
-	bot, err := User(s.twitch, s.env.twitchUserID)
+	bot, err := User(s.twitch, s.env.twitchUserID, "")
 	if nil != err {
 		return errors.Wrap(err, "unable to find user for id "+s.env.twitchUserID)
 	}
@@ -118,52 +122,86 @@ func (s *Server) PrepareTwitchClient() error {
 	return nil
 }
 
-func (s *Server) OnChannels(ctx context.Context, onChannel func(broadcaster helix.User)) error {
-	channels, err := s.q.GetChannels(ctx)
-	if nil != err && err != sql.ErrNoRows {
-		return errors.Wrap(err, "unable to get channels")
+// Channels should always be login usernames, not ids
+func (s *Server) JoinChannels(channelnames []string, channelIDs []string) {
+	if len(channelnames) != len(channelIDs) {
+		l.Println("JoinChannels requires len(usernames) == len(userIDs)")
+		return
 	}
 
-	broadcasters, err := Users(s.twitch, channels)
+	s.irc.Join(channelnames...)
+
+	bots, err := getBotList()
 	if nil != err {
-		return err
+		l.Println("unable to get known bot list", err)
+		return
 	}
-	for _, broadcaster := range broadcasters {
-		onChannel(broadcaster)
-	}
-	return nil
-}
-
-func (s *Server) JoinChannel(channel string) {
-	s.irc.Join(channel)
+	l.Printf("found db of %v bots", len(bots))
 
 	// Vet all users
 	go func() {
-		time.Sleep(10 * time.Second)
-		users, err := s.irc.Userlist(channel)
-		if nil != err {
-			log(channel, "", "unable to get user list", err)
-			return
-		}
-		bots, err := getBotList()
-		if nil != err {
-			log(channel, "", "unable to get known bot list", err)
-		} else {
-			for _, user := range users {
-				go s.checkUser(bots, channel, user)
+		time.Sleep(5 * time.Second)
+
+		for i, channel := range channelnames {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			defer cancel()
+
+			log(channel, "", "getting user list to check for bots", nil)
+			usernames, err := s.Chatters(ctx, channelIDs[i])
+			if nil != err {
+				log(channel, "", "unable to get user list", err)
+				continue
+			}
+
+			log(channel, "", "found chatters: "+fmt.Sprintf("%v", len(usernames)), nil)
+
+			users, err := Users(s.twitch, []string{}, usernames)
+			if nil != err {
+				log(channel, "", "unable to get users for channel", err)
+				continue
+			}
+
+			// get the already approved bots
+			approvals, err := s.q.GetApprovals(ctx, channelIDs[i])
+			if nil != err && err != sql.ErrNoRows {
+				l.Println("unable to get approvals", err)
+				continue
+			}
+
+			// get the users that are bots and not approved
+			bots := lo.Filter(users, func(user helix.User, _ int) bool {
+				isApproved := lo.ContainsBy(approvals, func(approval db.Approval) bool {
+					return approval.UserID == user.ID
+				})
+				isBot := lo.ContainsBy(bots, func(bot Bot) bool {
+					// The api returns the wrong ids
+					return bot.Username == user.Login
+				})
+				return !isApproved && isBot
+			})
+
+			log(channel, "", "found unapproved users: "+fmt.Sprintf("%v", len(bots)), nil)
+
+			for _, bot := range bots {
+				s.funcBan(ctx, Data{
+					Channel:   channel,
+					ChannelID: channelIDs[i],
+					User:      bot.Login,
+					UserID:    bot.ID,
+				}, 0, fmt.Sprintf("unapproved bot"))
 			}
 		}
 	}()
 }
 
 func (s *Server) PrepareIRC() error {
-	self, err := User(s.twitch, s.env.twitchUserID)
+	self, err := User(s.twitch, s.env.twitchUserID, "")
 	if nil != err {
 		fmt.Println("unable to find user for id", s.env.twitchUserID)
 		return err
 	}
 
-	s.irc = irc.NewClient(self.Login, s.env.twitchOauthToken)
+	s.irc = irc.NewClient(self.Login, s.env.ircToken)
 	s.irc.Capabilities = append(s.irc.Capabilities, irc.MembershipCapability)
 
 	fmt.Println("created client")
@@ -173,11 +211,24 @@ func (s *Server) PrepareIRC() error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
 
-		if err := s.OnChannels(ctx, func(broadcaster helix.User) {
-			s.JoinChannel(broadcaster.Login)
-		}); nil != err {
-			fmt.Println(err)
+		// Get the list of channels we should join
+		channels, err := s.q.GetChannels(ctx)
+		if nil != err && err != sql.ErrNoRows {
+			l.Println("unable to get channels", err)
+			return
 		}
+		// convert these ids to logins
+
+		users, err := Users(s.twitch, channels, []string{})
+		if nil != err {
+			l.Println("unable to get users", err)
+			return
+		}
+
+		usernames := lo.Map(users, func(user helix.User, _ int) string { return user.Login })
+		userIds := lo.Map(users, func(user helix.User, _ int) string { return user.ID })
+
+		s.JoinChannels(usernames, userIds)
 	})
 
 	s.irc.OnUserJoinMessage(func(m irc.UserJoinMessage) {
@@ -191,31 +242,30 @@ func (s *Server) PrepareIRC() error {
 	return s.irc.Connect()
 }
 
-func (s *Server) checkUser(bots *BotsResponse, channel, username string) {
-	if nil == bots {
-		var err error
-		bots, err = getBotList()
-		if nil != err {
-			log(channel, username, "unable to download known bot list", err)
-			return
-		}
-
+func (s *Server) checkUser(bots []Bot, channel, username string) {
+	var err error
+	bots, err = getBotList()
+	if nil != err {
+		log(channel, username, "unable to download known bot list", err)
+		return
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
 	// Get channel and user id
-	cUser, err := UserByName(s.twitch, channel)
+	cUser, err := User(s.twitch, "", channel)
 	if nil != err {
 		log(channel, username, "unable to get channel", err)
 		return
 	}
 
-	qUser, err := UserByName(s.twitch, username)
+	qUser, err := User(s.twitch, "", username)
 	if nil != err {
 		log(channel, username, "unable to get user", err)
 		return
 	}
+
 	channelID := cUser.ID
 	userID := qUser.ID
 
@@ -230,19 +280,17 @@ func (s *Server) checkUser(bots *BotsResponse, channel, username string) {
 	if approved > 0 {
 		return
 	}
-	for _, bot := range bots.Bots {
-		b, ok := bot[0].(string)
-		if !ok {
-			log(channel, username, "unable to cast bot name", nil)
-			continue
-		}
-		if b != username {
-			continue
-		}
 
-		log(channel, username, "banning as bot", nil)
-		s.irc.Say(channel, "/ban "+username+" is a bot")
-		return
+	for _, bot := range bots {
+		if bot.UserID == userID {
+			s.funcBan(ctx, Data{
+				Channel:   channel,
+				ChannelID: channelID,
+				User:      bot.Username,
+				UserID:    bot.UserID,
+			}, 0, fmt.Sprintf("bot in %v channels", bot.ChannelCount))
+			return
+		}
 	}
 
 	// This user is not a bot
@@ -260,7 +308,8 @@ func (s *Server) checkUser(bots *BotsResponse, channel, username string) {
 func (s *Server) ReadEnvironmentVariables() error {
 	// Read our username from the environment, end if failure
 	s.env = &Environment{}
-	s.env.twitchOauthToken = os.Getenv("TWITCH_OAUTH_TOKEN")
+	s.env.helixToken = os.Getenv("HELIX_TOKEN")
+	s.env.ircToken = os.Getenv("IRC_TOKEN")
 	s.env.twitchClientID = os.Getenv("TWITCH_CLIENT_ID")
 	s.env.twitchClientSecret = os.Getenv("TWITCH_CLIENT_SECRET")
 	s.env.twitchUserID = os.Getenv("TWITCH_USER_ID")
@@ -270,7 +319,8 @@ func (s *Server) ReadEnvironmentVariables() error {
 		s.env.twitchOwnerID == "" ||
 		s.env.twitchClientSecret == "" ||
 		s.env.twitchClientID == "" ||
-		s.env.twitchOauthToken == "" {
+		s.env.helixToken == "" ||
+		s.env.ircToken == "" {
 		return errors.New("missing environment variable")
 	}
 	return nil
