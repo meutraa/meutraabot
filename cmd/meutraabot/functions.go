@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	l "log"
 	"math/rand"
 	"net/http"
+	"net/http/httputil"
 	"regexp"
 	"strconv"
 	"strings"
@@ -148,7 +150,7 @@ func (s *Server) Chatters(ctx context.Context, channelID string) ([]string, erro
 		return []string{}, err
 	}
 
-	req.Header.Add("Authorization", "Bearer "+s.env.helixToken)
+	req.Header.Add("Authorization", "Bearer "+s.twitch.GetUserAccessToken())
 	req.Header.Add("Client-Id", s.env.twitchClientID)
 	req.Header.Add("Content-Type", "application/json")
 
@@ -171,6 +173,9 @@ func (s *Server) Chatters(ctx context.Context, channelID string) ([]string, erro
 	type Data struct {
 		Logins []UserData `json:"data"`
 	}
+
+	b, err := httputil.DumpResponse(resp, true)
+	l.Println(string(b))
 
 	switch resp.StatusCode {
 	case 400: // Bad request
@@ -197,7 +202,7 @@ func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) strin
 		return ""
 	}
 
-	req.Header.Add("Authorization", "Bearer "+s.env.helixToken)
+	req.Header.Add("Authorization", "Bearer "+s.twitch.GetUserAccessToken())
 	req.Header.Add("Client-Id", s.env.twitchClientID)
 
 	q := req.URL.Query()
@@ -213,6 +218,9 @@ func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) strin
 		log(d.Channel, d.User, "unable to do request", err)
 		return ""
 	}
+
+	b, err := httputil.DumpResponse(resp, true)
+	l.Println(string(b))
 
 	switch resp.StatusCode {
 	case 204: // Success
@@ -238,7 +246,7 @@ func (s *Server) funcUnban(ctx context.Context, d Data) string {
 		return ""
 	}
 
-	req.Header.Add("Authorization", "Bearer "+s.env.helixToken)
+	req.Header.Add("Authorization", "Bearer "+s.twitch.GetUserAccessToken())
 	req.Header.Add("Client-Id", s.env.twitchClientID)
 	req.Header.Add("Content-Type", "application/json")
 
@@ -255,9 +263,11 @@ func (s *Server) funcUnban(ctx context.Context, d Data) string {
 	}
 	defer resp.Body.Close()
 
+	b, err := httputil.DumpResponse(resp, true)
+	l.Println(string(b))
+
 	switch resp.StatusCode {
 	case 400: // Bad request
-		return "bad request"
 	case 200: // Success
 	case 401: // Unauthorized, might not be mod
 	case 403:
@@ -302,7 +312,7 @@ func (s *Server) funcBan(ctx context.Context, d Data, duration int, reason strin
 		return ""
 	}
 
-	req.Header.Add("Authorization", "Bearer "+s.env.helixToken)
+	req.Header.Add("Authorization", "Bearer "+s.twitch.GetUserAccessToken())
 	req.Header.Add("Client-Id", s.env.twitchClientID)
 	req.Header.Add("Content-Type", "application/json")
 
@@ -318,9 +328,11 @@ func (s *Server) funcBan(ctx context.Context, d Data, duration int, reason strin
 	}
 	defer resp.Body.Close()
 
+	b, err := httputil.DumpResponse(resp, true)
+	l.Println(string(b))
+
 	switch resp.StatusCode {
 	case 400: // Bad request
-		return "bad request"
 	case 200: // Success
 	case 401: // Unauthorized, might not be mod
 	case 403:

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	l "log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -56,7 +57,27 @@ func (s *Server) PrepareAPI() {
 	})
 
 	or := chi.NewRouter()
-	or.Get("/", func(w http.ResponseWriter, _ *http.Request) {
+	or.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		l.Println("Received request to oauth")
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			l.Println("user access token missing from oauth redirect")
+		}
+		select {
+		case s.oauth <- code:
+			l.Println("sent user access token to internal")
+			state := r.URL.Query().Get("state")
+			s.oauth <- state
+			l.Println("sent state to internal")
+		default:
+			l.Println("user access token not sent to internal")
+		}
+
+		if code != "" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		w.Header().Set("Content-Type", "text/html")
 		// Get the "access_token" from the url fragment using javascript. Display the token large in the center of the page.
 		w.Write([]byte(`<html>
@@ -91,6 +112,7 @@ func (s *Server) PrepareAPI() {
 	}
 
 	go func() {
+		l.Println("serving http endpoints")
 		go http.ListenAndServe(":http", certManager.HTTPHandler(nil))
 		err := server.ListenAndServeTLS("", "")
 		if nil != err {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
@@ -38,6 +39,7 @@ func log(channel, username, message string, err error) {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	if err := run(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -49,6 +51,7 @@ func run() error {
 
 	s.history = make(map[string][]*irc.PrivateMessage)
 	s.conversations = make(map[string][]*irc.PrivateMessage)
+	s.oauth = make(chan string)
 
 	if err := s.ReadEnvironmentVariables(); nil != err {
 		return err

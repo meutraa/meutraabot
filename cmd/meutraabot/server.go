@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/ioutil"
 	l "log"
+	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
@@ -30,6 +32,7 @@ type Server struct {
 	q             *db.Queries
 	client        *http.Client
 	env           *Environment
+	oauth         chan string
 	history       map[string][]*irc.PrivateMessage
 	conversations map[string][]*irc.PrivateMessage
 }
@@ -38,9 +41,9 @@ type Environment struct {
 	twitchUserName     string
 	twitchUserID       string
 	twitchOwnerID      string
-	helixToken         string
 	ircToken           string
 	twitchClientSecret string
+	twitchRedirectURL  string
 	twitchClientID     string
 }
 
@@ -93,24 +96,115 @@ func (s *Server) PrepareDatabase() error {
 	return nil
 }
 
+func (s *Server) RefreshUserAccessToken() error {
+	dat, err := ioutil.ReadFile("refresh_token")
+	if nil != err {
+		return errors.Wrap(err, "unable to read refresh_token")
+	}
+
+	res, err := s.twitch.RefreshUserAccessToken(string(dat))
+	if err != nil {
+		return errors.Wrap(err, "unable to refresh user access token")
+	}
+
+	l.Println("aquired a refreshed user access token that expires in", res.Data.ExpiresIn, "seconds")
+
+	err = os.WriteFile("user_access_token", []byte(res.Data.AccessToken), 0640)
+	if err != nil {
+		return errors.Wrap(err, "unable to write user access token to file")
+	}
+
+	err = os.WriteFile("refresh_token", []byte(res.Data.RefreshToken), 0640)
+	if err != nil {
+		return errors.Wrap(err, "unable to write refresh token to file")
+	}
+
+	s.twitch.SetUserAccessToken(res.Data.AccessToken)
+
+	return nil
+}
+
+func (s *Server) GetUserAccessToken() error {
+	// Create a random string to prevent CSRF attacks
+	var letters = []rune("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	b := make([]rune, 32)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	state := string(b)
+
+	url := s.twitch.GetAuthorizationURL(&helix.AuthorizationURLParams{
+		ResponseType: "code",
+		State:        state,
+		Scopes: []string{
+			"chat:edit",
+			"chat:read",
+			"channel:moderate",
+			"moderation:read",
+			"moderator:read:chatters",
+			"moderator:manage:chat_messages",
+			"moderator:manage:banned_users",
+			"moderator:manage:announcements",
+		},
+	})
+
+	fmt.Println("Open", url, "and grant user access token")
+	// block waiting for token
+	code := <-s.oauth
+	stateRes := <-s.oauth
+
+	if state != stateRes {
+		return errors.New("state does not match oauth response")
+	}
+
+	res, err := s.twitch.RequestUserAccessToken(code)
+	if err != nil {
+		return errors.Wrap(err, "unable to request user access token")
+	}
+
+	l.Println("aquired a user access token that expires in", res.Data.ExpiresIn, "seconds")
+
+	err = os.WriteFile("user_access_token", []byte(res.Data.AccessToken), 0640)
+	if err != nil {
+		return errors.Wrap(err, "unable to write user access token to file")
+	}
+
+	err = os.WriteFile("refresh_token", []byte(res.Data.RefreshToken), 0640)
+	if err != nil {
+		return errors.Wrap(err, "unable to write refresh token to file")
+	}
+
+	s.twitch.SetUserAccessToken(res.Data.AccessToken)
+
+	return nil
+}
+
 func (s *Server) PrepareTwitchClient() error {
+	l.Println("preparing twitch client")
 	client, err := helix.NewClient(&helix.Options{
 		ClientID:     s.env.twitchClientID,
 		ClientSecret: s.env.twitchClientSecret,
+		RedirectURI:  s.env.twitchRedirectURL,
 	})
 	if err != nil {
 		return errors.Wrap(err, "unable to create twitch api client")
 	}
-	s.twitch = client
-
-	resp, err := s.twitch.RequestAppAccessToken([]string{})
-	if err != nil {
-		return errors.Wrap(err, "unable to get app access token")
-	}
-
-	client.SetAppAccessToken(resp.Data.AccessToken)
 	s.client = &http.Client{}
 	s.twitch = client
+
+	// Read the user access token from a file, if it exists
+	var token string
+	dat, err := ioutil.ReadFile("user_access_token")
+	if nil != err {
+		l.Println("unable to read existing user access token, requesting new one")
+		s.GetUserAccessToken()
+		token = s.twitch.GetUserAccessToken()
+	} else {
+		token = string(dat)
+		client.SetUserAccessToken(token)
+	}
+
+	go s.RefreshUserAccessTokenLoop()
 
 	bot, err := User(s.twitch, s.env.twitchUserID, "")
 	if nil != err {
@@ -120,6 +214,31 @@ func (s *Server) PrepareTwitchClient() error {
 	s.env.twitchUserName = bot.DisplayName
 
 	return nil
+}
+
+func (s *Server) RefreshUserAccessTokenLoop() {
+	for {
+		l.Println("testing validility of token")
+		isValid, res, err := s.twitch.ValidateToken(s.twitch.GetUserAccessToken())
+		if err != nil {
+			l.Println("unable to validate user access token", err)
+		} else if !isValid {
+			l.Println("saved token is not valid, requesting new one")
+			s.GetUserAccessToken()
+		} else {
+			if res.Data.ExpiresIn <= 3600 {
+				// Refresh token
+				err := s.RefreshUserAccessToken()
+				if nil != err {
+					l.Println("unable to refresh token", err)
+				}
+			} else {
+				l.Println("user access token is valid for another", res.Data.ExpiresIn, "s")
+			}
+		}
+		l.Println("waiting one hour to validate again")
+		time.Sleep(time.Hour)
+	}
 }
 
 // Channels should always be login usernames, not ids
@@ -308,18 +427,18 @@ func (s *Server) checkUser(bots []Bot, channel, username string) {
 func (s *Server) ReadEnvironmentVariables() error {
 	// Read our username from the environment, end if failure
 	s.env = &Environment{}
-	s.env.helixToken = os.Getenv("HELIX_TOKEN")
 	s.env.ircToken = os.Getenv("IRC_TOKEN")
 	s.env.twitchClientID = os.Getenv("TWITCH_CLIENT_ID")
 	s.env.twitchClientSecret = os.Getenv("TWITCH_CLIENT_SECRET")
 	s.env.twitchUserID = os.Getenv("TWITCH_USER_ID")
 	s.env.twitchOwnerID = os.Getenv("TWITCH_OWNER_ID")
+	s.env.twitchRedirectURL = os.Getenv("TWITCH_REDIRECT_URL")
 
 	if s.env.twitchUserID == "" ||
 		s.env.twitchOwnerID == "" ||
 		s.env.twitchClientSecret == "" ||
+		s.env.twitchRedirectURL == "" ||
 		s.env.twitchClientID == "" ||
-		s.env.helixToken == "" ||
 		s.env.ircToken == "" {
 		return errors.New("missing environment variable")
 	}
