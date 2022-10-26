@@ -33,15 +33,14 @@ type Server struct {
 	client        *http.Client
 	env           *Environment
 	oauth         chan string
+	selfLogin     string
+	selfID        string
 	history       map[string][]*irc.PrivateMessage
 	conversations map[string][]*irc.PrivateMessage
 }
 
 type Environment struct {
-	twitchUserName     string
-	twitchUserID       string
 	twitchOwnerID      string
-	ircToken           string
 	twitchClientSecret string
 	twitchRedirectURL  string
 	twitchClientID     string
@@ -206,12 +205,13 @@ func (s *Server) PrepareTwitchClient() error {
 
 	go s.RefreshUserAccessTokenLoop()
 
-	bot, err := User(s.twitch, s.env.twitchUserID, "")
+	bot, err := User(s.twitch, "", "")
 	if nil != err {
-		return errors.Wrap(err, "unable to find user for id "+s.env.twitchUserID)
+		return errors.Wrap(err, "unable to find user for bot account")
 	}
 
-	s.env.twitchUserName = bot.DisplayName
+	s.selfLogin = bot.Login
+	s.selfID = bot.ID
 
 	return nil
 }
@@ -233,7 +233,7 @@ func (s *Server) RefreshUserAccessTokenLoop() {
 					l.Println("unable to refresh token", err)
 				}
 			} else {
-				l.Println("user access token is valid for another", res.Data.ExpiresIn, "s")
+				l.Println("user access token is valid for another", res.Data.ExpiresIn/60, "minutes")
 			}
 		}
 		l.Println("waiting one hour to validate again")
@@ -314,19 +314,19 @@ func (s *Server) JoinChannels(channelnames []string, channelIDs []string) {
 }
 
 func (s *Server) PrepareIRC() error {
-	self, err := User(s.twitch, s.env.twitchUserID, "")
+	/*self, err := User(s.twitch, s.env.twitchUserID, "")
 	if nil != err {
 		fmt.Println("unable to find user for id", s.env.twitchUserID)
 		return err
-	}
+	}*/
 
-	s.irc = irc.NewClient(self.Login, s.env.ircToken)
+	s.irc = irc.NewClient(s.selfLogin, "oauth:"+s.twitch.GetUserAccessToken())
 	s.irc.Capabilities = append(s.irc.Capabilities, irc.MembershipCapability)
 
 	fmt.Println("created client")
 	s.irc.OnGlobalUserStateMessage(func(m irc.GlobalUserStateMessage) {
 		// Get own user id
-		s.irc.Join(self.Login)
+		s.irc.Join(s.selfLogin)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
 
@@ -427,19 +427,15 @@ func (s *Server) checkUser(bots []Bot, channel, username string) {
 func (s *Server) ReadEnvironmentVariables() error {
 	// Read our username from the environment, end if failure
 	s.env = &Environment{}
-	s.env.ircToken = os.Getenv("IRC_TOKEN")
 	s.env.twitchClientID = os.Getenv("TWITCH_CLIENT_ID")
 	s.env.twitchClientSecret = os.Getenv("TWITCH_CLIENT_SECRET")
-	s.env.twitchUserID = os.Getenv("TWITCH_USER_ID")
 	s.env.twitchOwnerID = os.Getenv("TWITCH_OWNER_ID")
 	s.env.twitchRedirectURL = os.Getenv("TWITCH_REDIRECT_URL")
 
-	if s.env.twitchUserID == "" ||
-		s.env.twitchOwnerID == "" ||
+	if s.env.twitchOwnerID == "" ||
 		s.env.twitchClientSecret == "" ||
 		s.env.twitchRedirectURL == "" ||
-		s.env.twitchClientID == "" ||
-		s.env.ircToken == "" {
+		s.env.twitchClientID == "" {
 		return errors.New("missing environment variable")
 	}
 	return nil

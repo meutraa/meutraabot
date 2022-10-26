@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	l "log"
 	"math/rand"
 	"net/http"
-	"net/http/httputil"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	irc "github.com/gempir/go-twitch-irc/v3"
 	"github.com/hako/durafmt"
 	"github.com/nicklaw5/helix/v2"
+	"github.com/pkg/errors"
 	"github.com/samber/lo"
 )
 
@@ -87,8 +87,6 @@ func Users(client *helix.Client, userIDs []string, usernames []string) ([]helix.
 		req.IDs = userIDs
 	} else if len(usernames) > 0 {
 		req.Logins = usernames
-	} else {
-		return []helix.User{}, nil
 	}
 
 	resp, err := client.GetUsers(&req)
@@ -139,59 +137,19 @@ func (s *Server) funcUser(ctx context.Context, d Data) string {
 	return string(data)
 }
 
-// https://dev.twitch.tv/docs/api/reference#get-chatters
 func (s *Server) Chatters(ctx context.Context, channelID string) ([]string, error) {
-	req, err := http.NewRequest(
-		http.MethodGet,
-		"https://api.twitch.tv/helix/chat/chatters",
-		nil,
-	)
-	if err != nil {
-		return []string{}, err
-	}
-
-	req.Header.Add("Authorization", "Bearer "+s.twitch.GetUserAccessToken())
-	req.Header.Add("Client-Id", s.env.twitchClientID)
-	req.Header.Add("Content-Type", "application/json")
-
-	q := req.URL.Query()
-	q.Add("broadcaster_id", channelID)
-	q.Add("moderator_id", s.env.twitchUserID)
-	// This only returns the first 100 (max 1000)
-	q.Add("first", "100")
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return []string{}, err
-	}
-	defer resp.Body.Close()
-
-	type UserData struct {
-		Login string `json:"user_login"`
-	}
-	type Data struct {
-		Logins []UserData `json:"data"`
-	}
-
-	b, err := httputil.DumpResponse(resp, true)
-	l.Println(string(b))
-
-	switch resp.StatusCode {
-	case 400: // Bad request
-		return []string{}, errors.New("bad request")
-	case 401: // Unauthorized, might not be mod
-	case 403:
-		return []string{}, errors.New("unauthorized or forbidden")
-	}
-
-	data := Data{}
-	err = json.NewDecoder(resp.Body).Decode(&data)
+	res, err := s.twitch.GetChannelChatChatters(&helix.GetChatChattersParams{
+		BroadcasterID: channelID,
+		ModeratorID:   s.selfID,
+		First:         "100",
+	})
 	if nil != err {
-		return []string{}, err
+		return []string{}, errors.Wrap(err, "unable to get channel chatters")
+	} else if res.Error != "" {
+		l.Println(channelID, res.Error+": "+res.ErrorMessage, nil)
 	}
 
-	return lo.Map(data.Logins, func(data UserData, _ int) string { return data.Login }), nil
+	return lo.Map(res.Data.Chatters, func(data helix.ChatChatter, _ int) string { return data.UserLogin }), nil
 }
 
 // https://dev.twitch.tv/docs/api/reference#delete-chat-messages
@@ -207,20 +165,24 @@ func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) strin
 
 	q := req.URL.Query()
 	q.Add("broadcaster_id", d.ChannelID)
-	q.Add("moderator_id", s.env.twitchUserID)
+	q.Add("moderator_id", s.selfID)
 	if "" != messageID {
 		q.Add("message_id", messageID)
 	}
 	req.URL.RawQuery = q.Encode()
-
 	resp, err := s.client.Do(req)
 	if err != nil {
 		log(d.Channel, d.User, "unable to do request", err)
 		return ""
 	}
 
-	b, err := httputil.DumpResponse(resp, true)
-	l.Println(string(b))
+	l.Println(req.Method, req.URL)
+	l.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err == nil {
+		l.Println(string(body))
+	}
 
 	switch resp.StatusCode {
 	case 204: // Success
@@ -234,113 +196,38 @@ func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) strin
 	return ""
 }
 
-// https://dev.twitch.tv/docs/api/reference#unban-user
 func (s *Server) funcUnban(ctx context.Context, d Data) string {
-	req, err := http.NewRequest(
-		http.MethodDelete,
-		"https://api.twitch.tv/helix/moderation/bans",
-		nil,
-	)
+	res, err := s.twitch.UnbanUser(&helix.UnbanUserParams{
+		BroadcasterID: d.ChannelID,
+		ModeratorID:   s.selfID,
+		UserID:        d.UserID,
+	})
 	if err != nil {
-		log(d.Channel, d.User, "unable to create request", err)
-		return ""
+		log(d.Channel, d.User, "unable to unban user", err)
+	} else if res.Error != "" {
+		log(d.Channel, d.User, res.Error+": "+res.ErrorMessage, nil)
 	}
 
-	req.Header.Add("Authorization", "Bearer "+s.twitch.GetUserAccessToken())
-	req.Header.Add("Client-Id", s.env.twitchClientID)
-	req.Header.Add("Content-Type", "application/json")
-
-	q := req.URL.Query()
-	q.Add("broadcaster_id", d.ChannelID)
-	q.Add("moderator_id", s.env.twitchUserID)
-	q.Add("user_id", d.UserID)
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		log(d.Channel, d.User, "unable to do request", err)
-		return ""
-	}
-	defer resp.Body.Close()
-
-	b, err := httputil.DumpResponse(resp, true)
-	l.Println(string(b))
-
-	switch resp.StatusCode {
-	case 400: // Bad request
-	case 200: // Success
-	case 401: // Unauthorized, might not be mod
-	case 403:
-	case 409:
-		return ""
-	case 429:
-		return "rate limited"
-	}
 	return ""
 }
 
-// https://dev.twitch.tv/docs/api/reference#ban-user
 func (s *Server) funcBan(ctx context.Context, d Data, duration int, reason string) string {
-	type Data struct {
-		Duration int    `json:"duration,omitempty"`
-		Reason   string `json:"reason"`
-		UserID   string `json:"user_id"`
-	}
-	type Request struct {
-		Data Data `json:"data"`
-	}
-
-	reqBody, err := json.Marshal(Request{
-		Data: Data{
+	res, err := s.twitch.BanUser(&helix.BanUserParams{
+		BroadcasterID: d.ChannelID,
+		ModeratorId:   s.selfID,
+		Body: helix.BanUserRequestBody{
 			Duration: duration,
 			Reason:   reason,
-			UserID:   d.UserID,
+			UserId:   d.UserID,
 		},
 	})
+
 	if err != nil {
-		log(d.Channel, d.User, "unable to marshal requestbody ", err)
-		return ""
+		log(d.Channel, d.User, "unable to ban user", err)
+	} else if res.Error != "" {
+		log(d.Channel, d.User, res.Error+": "+res.ErrorMessage, nil)
 	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		"https://api.twitch.tv/helix/moderation/bans",
-		bytes.NewBuffer(reqBody),
-	)
-	if err != nil {
-		log(d.Channel, d.User, "unable to create request", err)
-		return ""
-	}
-
-	req.Header.Add("Authorization", "Bearer "+s.twitch.GetUserAccessToken())
-	req.Header.Add("Client-Id", s.env.twitchClientID)
-	req.Header.Add("Content-Type", "application/json")
-
-	q := req.URL.Query()
-	q.Add("broadcaster_id", d.ChannelID)
-	q.Add("moderator_id", s.env.twitchUserID)
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		log(d.Channel, d.User, "unable to do request", err)
-		return ""
-	}
-	defer resp.Body.Close()
-
-	b, err := httputil.DumpResponse(resp, true)
-	l.Println(string(b))
-
-	switch resp.StatusCode {
-	case 400: // Bad request
-	case 200: // Success
-	case 401: // Unauthorized, might not be mod
-	case 403:
-	case 409:
-		return ""
-	case 429:
-		return "rate limited"
-	}
 	return ""
 }
 
@@ -459,7 +346,7 @@ func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useC
 
 	// last chance to check that meuua has not already replied
 	hist, okay := s.history[d.Channel]
-	if okay && len(hist) > 0 && hist[len(hist)-1].User.ID == s.env.twitchUserID {
+	if okay && len(hist) > 0 && hist[len(hist)-1].User.ID == s.selfID {
 		log(d.Channel, d.User, "was last person to respond, so not doing completion request", nil)
 		return ""
 	}

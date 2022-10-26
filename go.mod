@@ -9,15 +9,15 @@ require (
 	github.com/go-chi/hostrouter v0.2.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/mattn/go-sqlite3 v1.14.15
-	github.com/nicklaw5/helix/v2 v2.7.1
+	github.com/nicklaw5/helix/v2 v2.10.0
 	github.com/pkg/errors v0.9.1
-	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
+	github.com/samber/lo v1.33.0
+	golang.org/x/crypto v0.1.0
 )
 
 require (
 	github.com/golang-jwt/jwt/v4 v4.4.2 // indirect
-	github.com/samber/lo v1.28.2 // indirect
-	golang.org/x/exp v0.0.0-20220303212507-bbda1eaf7a17 // indirect
-	golang.org/x/net v0.0.0-20220909164309-bea034e7d591 // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/exp v0.0.0-20221026004748-78e5e7837ae6 // indirect
+	golang.org/x/net v0.1.0 // indirect
+	golang.org/x/text v0.4.0 // indirect
 )

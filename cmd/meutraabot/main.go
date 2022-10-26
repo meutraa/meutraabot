@@ -121,7 +121,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		IsSub:          isSub,
 		Message:        e.Message,
 		MessageID:      e.ID,
-		BotID:          s.env.twitchUserID,
+		BotID:          s.selfID,
 		Command:        command,
 		Arg:            args,
 		SelectedUser:   selectedUser,
@@ -180,7 +180,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		}()
 		return "Bye " + e.User.Name + "👋"
 	case command == "+join":
-		if e.RoomID != s.env.twitchUserID {
+		if e.RoomID != s.selfID {
 			return ""
 		}
 		if argCount == 1 && !isOwner {
@@ -371,7 +371,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		if data.ReplyingToMessageID != "" {
 			for _, m := range history {
 				if m.Reply != nil && m.Reply.ParentMsgID == data.ReplyingToMessageID {
-					if m.User.ID == s.env.twitchUserID {
+					if m.User.ID == s.selfID {
 						return "reply::delay::" + s.funcReplyAuto(ctx, data, data.Message, false, func() string { return "" })
 					}
 				}
@@ -389,7 +389,7 @@ func (s *Server) handleCommand(ctx context.Context, e *irc.PrivateMessage) strin
 		activeUsers := map[string]bool{}
 		messagesChecked := 0
 		for i := len(history) - 1; i >= 0; i-- {
-			isBot := history[i].User.ID == s.env.twitchUserID
+			isBot := history[i].User.ID == s.selfID
 			if isBot && count == 0 {
 				count = len(history) - i
 			}
@@ -468,7 +468,7 @@ func (s *Server) handleMessage(e irc.PrivateMessage) {
 	}
 	s.history[e.Channel] = append(s.history[e.Channel], &e)
 
-	if s.env.twitchUserID == e.User.ID {
+	if s.selfID == e.User.ID {
 		return
 	}
 
@@ -511,9 +511,9 @@ func (s *Server) handleMessage(e irc.PrivateMessage) {
 					Reply:   &irc.Reply{},
 					Message: parts,
 					User: irc.User{
-						Name:        s.env.twitchUserName,
-						DisplayName: s.env.twitchUserName,
-						ID:          s.env.twitchUserID,
+						Name:        s.selfLogin,
+						DisplayName: s.selfLogin,
+						ID:          s.selfID,
 					},
 				}
 				if reply {
