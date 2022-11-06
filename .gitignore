@@ -1,3 +1,4 @@
 **/go.sum
 /meutraabot
 deploy.sh
+build.sh

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"io/ioutil"
 	l "log"
@@ -13,9 +14,7 @@ import (
 	"time"
 
 	"github.com/samber/lo"
-
-	"github.com/mattn/go-sqlite3"
-	_ "github.com/mattn/go-sqlite3"
+	sqlite3 "modernc.org/sqlite"
 
 	_ "embed"
 
@@ -59,17 +58,13 @@ func (s *Server) Close() {
 var ddl string
 
 func (s *Server) PrepareDatabase() error {
-	regex := func(re, s string) (bool, error) {
-		return regexp.MatchString(re, s)
+	regex := func(ctx *sqlite3.FunctionContext, args []driver.Value) (driver.Value, error) {
+		return regexp.MatchString(args[0].(string), args[1].(string))
 	}
-	sql.Register("sqlite3_extended",
-		&sqlite3.SQLiteDriver{
-			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-				return conn.RegisterFunc("regexp", regex, true)
-			},
-		})
 
-	conn, err := sql.Open("sqlite3_extended", "file:db.sql?mode=rwc")
+	sqlite3.RegisterScalarFunction("regexp", 2, regex)
+
+	conn, err := sql.Open("sqlite", "file:db.sql?mode=rwc")
 	if nil != err {
 		return errors.Wrap(err, "unable to establish connection to database")
 	}
