@@ -198,41 +198,35 @@ func (s *Server) PrepareTwitchClient() error {
 		client.SetUserAccessToken(token)
 	}
 
-	go s.RefreshUserAccessTokenLoop()
-
-	bot, err := User(s.twitch, "", "")
-	if nil != err {
-		return errors.Wrap(err, "unable to find user for bot account")
-	}
-
-	s.selfLogin = bot.Login
-	s.selfID = bot.ID
-
 	return nil
 }
 
-func (s *Server) RefreshUserAccessTokenLoop() {
-	for {
-		l.Println("testing validility of token")
-		isValid, res, err := s.twitch.ValidateToken(s.twitch.GetUserAccessToken())
-		if err != nil {
-			l.Println("unable to validate user access token", err)
-		} else if !isValid {
-			l.Println("saved token is not valid, requesting new one")
-			s.GetUserAccessToken()
-		} else {
-			if res.Data.ExpiresIn <= 3600 {
-				// Refresh token
-				err := s.RefreshUserAccessToken()
-				if nil != err {
-					l.Println("unable to refresh token", err)
-				}
-			} else {
-				l.Println("user access token is valid for another", res.Data.ExpiresIn/60, "minutes")
-			}
+func (s *Server) GetToken() {
+	l.Println("testing validility of token")
+	isValid, res, err := s.twitch.ValidateToken(s.twitch.GetUserAccessToken())
+	if err != nil {
+		l.Println("unable to validate user access token", err)
+	} else if !isValid {
+		l.Println("saved token is not valid, requesting new one")
+		s.GetUserAccessToken()
+
+		if err := s.PrepareIRC(); nil != err {
+			l.Println("unable to connect to irc with new token", err)
 		}
-		l.Println("waiting one hour to validate again")
-		time.Sleep(time.Hour)
+	} else {
+		if res.Data.ExpiresIn <= 3600 {
+			// Refresh token
+			err := s.RefreshUserAccessToken()
+			if nil != err {
+				l.Println("unable to refresh token", err)
+			} else {
+				if err := s.PrepareIRC(); nil != err {
+					l.Println("unable to connect to irc after refreshing token", err)
+				}
+			}
+		} else {
+			l.Println("user access token is valid for another", res.Data.ExpiresIn/60, "minutes")
+		}
 	}
 }
 
@@ -309,12 +303,13 @@ func (s *Server) JoinChannels(channelnames []string, channelIDs []string) {
 }
 
 func (s *Server) PrepareIRC() error {
-	/*self, err := User(s.twitch, s.env.twitchUserID, "")
+	bot, err := User(s.twitch, "", "")
 	if nil != err {
-		fmt.Println("unable to find user for id", s.env.twitchUserID)
-		return err
-	}*/
+		return errors.Wrap(err, "unable to find user for bot account")
+	}
 
+	s.selfLogin = bot.Login
+	s.selfID = bot.ID
 	s.irc = irc.NewClient(s.selfLogin, "oauth:"+s.twitch.GetUserAccessToken())
 	s.irc.Capabilities = append(s.irc.Capabilities, irc.MembershipCapability)
 

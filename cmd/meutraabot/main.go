@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	l "log"
 	"math"
 	"math/rand"
 	"os"
@@ -70,9 +71,37 @@ func run() error {
 		return err
 	}
 
-	if err := s.PrepareIRC(); nil != err {
-		return err
+	ensureToken := func() {
+		for i := 0; i >= 0; i++ {
+			if s.twitch.GetUserAccessToken() != "" {
+				isValid, _, err := s.twitch.ValidateToken(s.twitch.GetUserAccessToken())
+				if err != nil {
+					l.Println("unable to validate user access token", err)
+				}
+				if isValid {
+					l.Println("have a valid token")
+					if err := s.PrepareIRC(); nil != err {
+						l.Println("unable to connect to irc with existing token", err)
+					}
+					break
+				}
+			}
+			if i > 0 {
+				time.Sleep(time.Second * 30)
+			}
+			s.GetToken()
+		}
 	}
+
+	ensureToken()
+
+	go func() {
+		for {
+			l.Println("waiting one hour to validate again")
+			time.Sleep(time.Hour)
+			s.GetToken()
+		}
+	}()
 
 	// Create a channel for the OS to notify us of interrupts/signals
 	interrupt := make(chan os.Signal, 1)

@@ -351,7 +351,7 @@ func (s *Server) funcReplyAuto(ctx context.Context, d Data, message string, useC
 		return ""
 	}
 
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/engines/text-davinci-002/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/engines/text-davinci-003/completions", bytes.NewBuffer(jsonData))
 	if nil != err {
 		log(d.Channel, d.User, "unable to create completion request", err)
 		return ""
