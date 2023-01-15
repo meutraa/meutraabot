@@ -18,6 +18,7 @@ import (
 
 	irc "github.com/gempir/go-twitch-irc/v3"
 	"github.com/meutraa/meutraabot/pkg/db"
+	"github.com/pkg/errors"
 )
 
 type Message struct {
@@ -71,35 +72,31 @@ func run() error {
 		return err
 	}
 
-	ensureToken := func() {
-		for i := 0; i >= 0; i++ {
-			if s.twitch.GetUserAccessToken() != "" {
-				isValid, _, err := s.twitch.ValidateToken(s.twitch.GetUserAccessToken())
-				if err != nil {
-					l.Println("unable to validate user access token", err)
-				}
-				if isValid {
-					l.Println("have a valid token")
-					if err := s.PrepareIRC(); nil != err {
-						l.Println("unable to connect to irc with existing token", err)
-					}
-					break
-				}
-			}
-			if i > 0 {
-				time.Sleep(time.Second * 30)
-			}
-			s.GetToken()
-		}
-	}
+	s.EnsureValidUserToken()
 
-	ensureToken()
+	// Get self info
+	bot, err := User(s.twitch, "", "")
+	if nil != err {
+		return errors.Wrap(err, "unable to find user for bot account")
+	}
+	s.selfLogin = bot.Login
+	s.selfID = bot.ID
+
+	go func() {
+		for {
+			if err := s.PrepareIRC(); nil != err {
+				l.Println("unable to connect to irc", err)
+			}
+			s.EnsureValidUserToken()
+			time.Sleep(30 * time.Second)
+		}
+	}()
 
 	go func() {
 		for {
 			l.Println("waiting one hour to validate again")
 			time.Sleep(time.Hour)
-			s.GetToken()
+			s.EnsureValidUserToken()
 		}
 	}()
 

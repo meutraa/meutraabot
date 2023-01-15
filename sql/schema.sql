@@ -19,3 +19,10 @@ CREATE TABLE commands (
   template text NOT NULL,
   UNIQUE (channel_id, name)
 );
+
+CREATE TABLE numbers (
+  channel_id text NOT NULL,
+  name text NOT NULL,
+  value int NOT NULL DEFAULT 0,
+  UNIQUE (channel_id, name)
+);

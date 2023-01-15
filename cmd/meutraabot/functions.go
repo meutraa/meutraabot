@@ -18,6 +18,7 @@ import (
 
 	irc "github.com/gempir/go-twitch-irc/v3"
 	"github.com/hako/durafmt"
+	"github.com/meutraa/meutraabot/pkg/db"
 	"github.com/nicklaw5/helix/v2"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
@@ -60,6 +61,8 @@ func (s *Server) FuncMap(ctx context.Context, d Data, e *irc.PrivateMessage) tem
 		"duration":   func(time string) string { return s.funcDuration(ctx, d, time) },
 		"get":        func(url string) string { return s.funcGet(ctx, d, url) },
 		"json":       func(key, json string) string { return s.funcJsonParse(ctx, d, key, json) },
+		"getnum":     func(name string) string { return s.funcGetNumber(ctx, d, name) },
+		"addnum":     func(name string, value int) string { return s.funcAddToNumber(ctx, d, name, value) },
 	}
 }
 
@@ -193,6 +196,32 @@ func (s *Server) funcDelete(ctx context.Context, d Data, messageID string) strin
 	case 401:
 		return "unauthorized, check token scope for moderator:manage:chat_messages, or client-id"
 	}
+	return ""
+}
+
+func (s *Server) funcGetNumber(ctx context.Context, d Data, name string) string {
+	num, err := s.q.GetNumber(ctx, db.GetNumberParams{
+		ChannelID: d.ChannelID,
+		Name:      name,
+	})
+	if nil != err {
+		l.Println(err)
+		return "0"
+	}
+
+	return strconv.Itoa(int(num.Value))
+}
+
+func (s *Server) funcAddToNumber(ctx context.Context, d Data, name string, value int) string {
+	err := s.q.AddToNumber(ctx, db.AddToNumberParams{
+		ChannelID: d.ChannelID,
+		Name:      name,
+		Value:     int64(value),
+	})
+	if nil != err {
+		l.Println(err)
+	}
+
 	return ""
 }
 

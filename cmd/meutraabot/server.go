@@ -118,7 +118,7 @@ func (s *Server) RefreshUserAccessToken() error {
 	return nil
 }
 
-func (s *Server) GetUserAccessToken() error {
+func (s *Server) GetNewUserAccessToken() error {
 	// Create a random string to prevent CSRF attacks
 	var letters = []rune("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	b := make([]rune, 32)
@@ -186,48 +186,34 @@ func (s *Server) PrepareTwitchClient() error {
 	s.client = &http.Client{}
 	s.twitch = client
 
-	// Read the user access token from a file, if it exists
-	var token string
-	dat, err := ioutil.ReadFile("user_access_token")
-	if nil != err {
-		l.Println("unable to read existing user access token, requesting new one")
-		s.GetUserAccessToken()
-		token = s.twitch.GetUserAccessToken()
-	} else {
-		token = string(dat)
-		client.SetUserAccessToken(token)
-	}
-
 	return nil
 }
 
-func (s *Server) GetToken() {
+func (s *Server) EnsureValidUserToken() error {
+	// Check to see if we have a token loaded already.
+	if s.twitch.GetUserAccessToken() == "" {
+		// Read the user access token from a file, if it exists
+		dat, err := ioutil.ReadFile("user_access_token")
+		if nil != err {
+			l.Println("unable to read existing user access token, requesting new one")
+			return s.GetNewUserAccessToken()
+		}
+		s.twitch.SetUserAccessToken(string(dat))
+	}
+
+	// Now that we have a token loaded, test it
 	l.Println("testing validility of token")
 	isValid, res, err := s.twitch.ValidateToken(s.twitch.GetUserAccessToken())
 	if err != nil {
-		l.Println("unable to validate user access token", err)
+		// This is probably fatal
+		return errors.Wrap(err, "unable to validate user access token")
 	} else if !isValid {
 		l.Println("saved token is not valid, requesting new one")
-		s.GetUserAccessToken()
-
-		if err := s.PrepareIRC(); nil != err {
-			l.Println("unable to connect to irc with new token", err)
-		}
-	} else {
-		if res.Data.ExpiresIn <= 3600 {
-			// Refresh token
-			err := s.RefreshUserAccessToken()
-			if nil != err {
-				l.Println("unable to refresh token", err)
-			} else {
-				if err := s.PrepareIRC(); nil != err {
-					l.Println("unable to connect to irc after refreshing token", err)
-				}
-			}
-		} else {
-			l.Println("user access token is valid for another", res.Data.ExpiresIn/60, "minutes")
-		}
+		return s.GetNewUserAccessToken()
+	} else if res.Data.ExpiresIn < 3600 {
+		return s.RefreshUserAccessToken()
 	}
+	return nil
 }
 
 // Channels should always be login usernames, not ids
@@ -303,17 +289,13 @@ func (s *Server) JoinChannels(channelnames []string, channelIDs []string) {
 }
 
 func (s *Server) PrepareIRC() error {
-	bot, err := User(s.twitch, "", "")
-	if nil != err {
-		return errors.Wrap(err, "unable to find user for bot account")
+	if s.irc != nil {
+		s.irc.Disconnect()
 	}
-
-	s.selfLogin = bot.Login
-	s.selfID = bot.ID
 	s.irc = irc.NewClient(s.selfLogin, "oauth:"+s.twitch.GetUserAccessToken())
 	s.irc.Capabilities = append(s.irc.Capabilities, irc.MembershipCapability)
 
-	fmt.Println("created client")
+	fmt.Println("created irc client")
 	s.irc.OnGlobalUserStateMessage(func(m irc.GlobalUserStateMessage) {
 		// Get own user id
 		s.irc.Join(s.selfLogin)
@@ -347,7 +329,7 @@ func (s *Server) PrepareIRC() error {
 
 	s.irc.OnPrivateMessage(s.handleMessage)
 
-	fmt.Println("connecting")
+	fmt.Println("connecting to irc")
 	return s.irc.Connect()
 }
 
